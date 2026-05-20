@@ -66,9 +66,9 @@ def build_agent():
     def ask_restaurant_specialist(query: str) -> str:
         """Delegate to the dining / restaurant specialist agent.
 
-        Use for places to eat near an area, or **along a route** between two places
-        (OpenStreetMap + OSRM; no API key). Pass a clear question with locations
-        (e.g. 'Italian near Termini, Rome' or 'Coffee stops along driving from Boston to Portland ME').
+        Use for places to eat near an area, or **between** origin and destination (excluding
+        endpoint zones — OSRM + OSM + Nominatim; no API key). Pass a clear question with locations
+        (e.g. 'Italian near Termini, Rome' or 'Lunch stops between Boston and Portland ME, not at either city').
         """
         return run_restaurant_query(restaurant_graph, query.strip())
 

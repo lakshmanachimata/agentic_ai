@@ -1,7 +1,7 @@
 """
 LangChain agent: Ollama + nearby places to eat from OpenStreetMap (free tier).
 
-- Geocoding: Nominatim (usage policy: one request per second; identify with User-Agent)
+- Geocoding: Nominatim (forward + light reverse for area labels; throttle between calls)
 - POIs: Overpass API (public instance; keep queries small)
 - Routes: OSRM public demo (same as travel_agent) to find places along a driving/walking/cycling path
 
@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from typing import Any
 
 import httpx
@@ -38,6 +39,7 @@ OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
     "https://lz4.overpass-api.de/api/interpreter",
 )
+NOMINATIM_REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 USER_AGENT = "agentic_ai-restaurant-agent/1.0 (local project; contact via repo)"
 
 # Nominatim asks for identifiable UA; Overpass public instances ask for modest use / small queries.
@@ -159,13 +161,112 @@ def _sample_polyline_evenly(poly: list[tuple[float, float]], max_samples: int = 
     return deduped or out
 
 
+def _route_length_m(poly: list[tuple[float, float]]) -> float:
+    if len(poly) < 2:
+        return 0.0
+    return sum(_seg_len_m(poly[i], poly[i + 1]) for i in range(len(poly) - 1))
+
+
+def _point_along_route_at_distance(
+    poly: list[tuple[float, float]], distance_m: float
+) -> tuple[float, float] | None:
+    """Point at ``distance_m`` meters along ``poly`` from the start (clamped)."""
+    if not poly:
+        return None
+    if len(poly) == 1:
+        return poly[0]
+    target = max(0.0, distance_m)
+    cum = 0.0
+    for i in range(len(poly) - 1):
+        a, b = poly[i], poly[i + 1]
+        seg_len = _seg_len_m(a, b)
+        if cum + seg_len >= target:
+            denom = seg_len if seg_len > 1e-6 else 1.0
+            t = max(0.0, min(1.0, (target - cum) / denom))
+            return (a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]))
+        cum += seg_len
+    return poly[-1]
+
+
+def _sample_route_middle_interval(
+    poly: list[tuple[float, float]],
+    lo_m: float,
+    hi_m: float,
+    max_samples: int,
+) -> list[tuple[float, float]]:
+    """Evenly spaced samples between ``lo_m`` and ``hi_m`` along the route (by path distance)."""
+    lo_m = max(0.0, lo_m)
+    hi_m = max(lo_m, hi_m)
+    span = hi_m - lo_m
+    if span < 80.0:
+        p = _point_along_route_at_distance(poly, (lo_m + hi_m) / 2.0)
+        return [p] if p else []
+
+    n = max(2, min(int(max_samples), 8))
+    out: list[tuple[float, float]] = []
+    for k in range(n):
+        frac = k / (n - 1) if n > 1 else 0.5
+        d = lo_m + frac * span
+        pt = _point_along_route_at_distance(poly, d)
+        if pt:
+            out.append(pt)
+
+    deduped: list[tuple[float, float]] = []
+    for p in out:
+        if not deduped or _seg_len_m(deduped[-1], p) >= 250.0:
+            deduped.append(p)
+    return deduped or out
+
+
+def _reverse_place_label(client: httpx.Client, lat: float, lon: float) -> str:
+    """Settlement-style label from Nominatim reverse (free; caller should throttle)."""
+    try:
+        resp = client.get(
+            NOMINATIM_REVERSE_URL,
+            params={
+                "lat": lat,
+                "lon": lon,
+                "format": "json",
+                "zoom": 12,
+                "addressdetails": "1",
+            },
+            headers={"User-Agent": USER_AGENT},
+            timeout=25.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except (httpx.HTTPError, json.JSONDecodeError, KeyError, TypeError):
+        return ""
+
+    addr = data.get("address") or {}
+    if isinstance(addr, dict):
+        for key in ("town", "city", "village", "hamlet", "suburb", "neighbourhood", "county"):
+            v = addr.get(key)
+            if isinstance(v, str) and v.strip():
+                return v.strip()[:80]
+    dn = data.get("display_name")
+    if isinstance(dn, str) and dn.strip():
+        return dn.split(",")[0].strip()[:80]
+    return ""
+
+
 def _fetch_route_polyline(
     client: httpx.Client,
     origin: str,
     destination: str,
     mode: str,
-) -> tuple[list[tuple[float, float]] | None, str, str | None, str | None, str]:
-    """Return (polyline lat,lon points, error, origin_label, dest_label, profile)."""
+) -> tuple[
+    list[tuple[float, float]] | None,
+    str,
+    str | None,
+    str | None,
+    str,
+    float | None,
+    float | None,
+    float | None,
+    float | None,
+]:
+    """Return polyline, error, labels, profile, and endpoint coordinates (lat/lon) if success."""
     profile = _normalize_profile(mode)
     if profile not in ("driving", "walking", "cycling"):
         return (
@@ -174,14 +275,28 @@ def _fetch_route_polyline(
             None,
             None,
             str(profile),
+            None,
+            None,
+            None,
+            None,
         )
 
     o_res = _geocode(client, origin)
     if isinstance(o_res, str):
-        return None, o_res, None, None, str(profile)
+        return None, o_res, None, None, str(profile), None, None, None, None
     d_res = _geocode(client, destination)
     if isinstance(d_res, str):
-        return None, d_res, None, None, str(profile)
+        return (
+            None,
+            d_res,
+            None,
+            None,
+            str(profile),
+            float(o_res["lat"]),
+            float(o_res["lon"]),
+            None,
+            None,
+        )
 
     o_lon, o_lat = o_res["lon"], o_res["lat"]
     d_lon, d_lat = d_res["lon"], d_res["lat"]
@@ -198,24 +313,84 @@ def _fetch_route_polyline(
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as e:
-        return None, f"Routing HTTP error: {e}", o_res.get("label"), d_res.get("label"), str(profile)
+        return (
+            None,
+            f"Routing HTTP error: {e}",
+            o_res.get("label"),
+            d_res.get("label"),
+            str(profile),
+            float(o_lat),
+            float(o_lon),
+            float(d_lat),
+            float(d_lon),
+        )
     except json.JSONDecodeError:
-        return None, "Routing service returned invalid data.", o_res.get("label"), d_res.get("label"), str(profile)
+        return (
+            None,
+            "Routing service returned invalid data.",
+            o_res.get("label"),
+            d_res.get("label"),
+            str(profile),
+            float(o_lat),
+            float(o_lon),
+            float(d_lat),
+            float(d_lon),
+        )
 
     if data.get("code") != "Ok":
         msg = data.get("message", data.get("code", "unknown error"))
-        return None, f"Routing failed: {msg}", o_res.get("label"), d_res.get("label"), str(profile)
+        return (
+            None,
+            f"Routing failed: {msg}",
+            o_res.get("label"),
+            d_res.get("label"),
+            str(profile),
+            float(o_lat),
+            float(o_lon),
+            float(d_lat),
+            float(d_lon),
+        )
 
     try:
         route = data["routes"][0]
     except (KeyError, IndexError, TypeError):
-        return None, "Routing response missing route.", o_res.get("label"), d_res.get("label"), str(profile)
+        return (
+            None,
+            "Routing response missing route.",
+            o_res.get("label"),
+            d_res.get("label"),
+            str(profile),
+            float(o_lat),
+            float(o_lon),
+            float(d_lat),
+            float(d_lon),
+        )
 
     poly = _polyline_from_osrm_route(route)
     if len(poly) < 2:
-        return None, "Route geometry too short to search along.", o_res.get("label"), d_res.get("label"), str(profile)
+        return (
+            None,
+            "Route geometry too short to search along.",
+            o_res.get("label"),
+            d_res.get("label"),
+            str(profile),
+            float(o_lat),
+            float(o_lon),
+            float(d_lat),
+            float(d_lon),
+        )
 
-    return poly, "", o_res.get("label"), d_res.get("label"), str(profile)
+    return (
+        poly,
+        "",
+        o_res.get("label"),
+        d_res.get("label"),
+        str(profile),
+        float(o_lat),
+        float(o_lon),
+        float(d_lat),
+        float(d_lon),
+    )
 
 
 def _sanitize_cuisine_token(raw: str) -> str | None:
@@ -265,43 +440,99 @@ def find_places_to_eat_along_route(
     origin: str,
     destination: str,
     mode: str = "driving",
-    corridor_radius_meters: int = 500,
+    exclude_endpoints_meters: int = 2500,
+    intermediate_search_radius_meters: int = 800,
+    max_distance_from_route_meters: int = 550,
     cuisine: str = "",
     max_results: int = 14,
 ) -> str:
-    """Find restaurants, cafés, and fast food along the route between two places (free OSRM + OSM).
+    """Find restaurants **between** origin and destination — not at the endpoints (free OSRM + OSM + Nominatim).
 
-    Uses the public OSRM demo for route geometry (same service style as the travel agent)
-    and Overpass queries near a few sampled points on that path. This is approximate:
-    very dense urban grids or long detours may miss some venues.
+    Builds an OSRM route, picks intermediate segments (excluding the first/last part of the path
+    and dropping POIs within a buffer of the geocoded start/end), runs small Overpass searches
+    around sampled **in-between** locations, and optionally labels those locations via Nominatim
+    reverse (throttled). Venues right at source or destination are excluded.
 
     Args:
         origin: Start location (city, address, landmark, or 'lat,lon').
         destination: End location.
         mode: driving (default), walking, or cycling.
-        corridor_radius_meters: Max distance from the route polyline to include a POI (250–800).
+        exclude_endpoints_meters: Omit the first/last this many meters along the route **and** drop
+            POIs closer than this (straight-line) to the geocoded origin or destination (800–5000; default 2500).
+        intermediate_search_radius_meters: Overpass search radius around each midpoint sample (400–1000; default 800).
+        max_distance_from_route_meters: Keep POIs within this distance of the route polyline (250–800; default 550).
         cuisine: Optional OSM cuisine tag filter. Leave empty for any.
         max_results: Cap on listed venues (max 20).
 
-    Data is community-contributed; verify before visiting.
+    Data is incomplete by nature; confirm before visiting.
     """
     cap = max(1, min(int(max_results), 20))
-    cor = max(250, min(int(corridor_radius_meters), 800))
+    buf = max(800, min(int(exclude_endpoints_meters), 5000))
+    search_r = max(400, min(int(intermediate_search_radius_meters), 1000))
+    cor = max(250, min(int(max_distance_from_route_meters), 800))
     cuisine_token = _sanitize_cuisine_token(cuisine) if cuisine else None
-    search_r = max(250, min(cor + 80, 750))
 
     merged: dict[tuple[str, int], dict[str, Any]] = {}
     samples: list[tuple[float, float]] = []
+    route: list[tuple[float, float]] | None = None
+    o_lab = d_lab = ""
+    profile = mode
+    o_la = o_lo = d_la = d_lo = 0.0
+    lo_prog = hi_prog = 0.0
+    short_route_fallback = False
 
     with httpx.Client() as client:
-        route, err, o_lab, d_lab, profile = _fetch_route_polyline(
-            client, origin.strip(), destination.strip(), mode
-        )
-        if route is None:
+        (
+            poly,
+            err,
+            o_lab,
+            d_lab,
+            profile,
+            o_lat_raw,
+            o_lon_raw,
+            d_lat_raw,
+            d_lon_raw,
+        ) = _fetch_route_polyline(client, origin.strip(), destination.strip(), mode)
+        if poly is None:
             return err
-        samples = _sample_polyline_evenly(route, max_samples=7)
-        for lat, lon in samples:
-            q = _overpass_query(lat, lon, search_r, cuisine_token)
+
+        route = poly
+        assert o_lat_raw is not None and o_lon_raw is not None and d_lat_raw is not None and d_lon_raw is not None
+        o_la, o_lo, d_la, d_lo = o_lat_raw, o_lon_raw, d_lat_raw, d_lon_raw
+
+        total_len = _route_length_m(poly)
+        min_gap = 400.0
+        if total_len <= 2 * buf + min_gap:
+            short_route_fallback = True
+            lo_prog = total_len * 0.25
+            hi_prog = total_len * 0.75
+            if hi_prog - lo_prog < 200.0:
+                mid = total_len / 2.0
+                lo_prog = max(0.0, mid - 120.0)
+                hi_prog = min(total_len, mid + 120.0)
+        else:
+            lo_prog = float(buf)
+            hi_prog = total_len - float(buf)
+
+        samples = _sample_route_middle_interval(poly, lo_prog, hi_prog, max_samples=6)
+        if not samples:
+            return (
+                f"No intermediate waypoints on route {o_lab or origin} → {d_lab or destination}. "
+                "Try a longer trip or different place names."
+            )
+
+        area_labels: list[str] = []
+        n_s = len(samples)
+        for i, (slat, slon) in enumerate(samples):
+            if i > 0:
+                time.sleep(1.06)
+            lbl = _reverse_place_label(client, slat, slon)
+            frac = i / max(1, n_s - 1) if n_s > 1 else 0.5
+            km_mark = (lo_prog + frac * (hi_prog - lo_prog)) / 1000.0
+            area_labels.append(lbl if lbl else f"en route ~{km_mark:.1f} km from start")
+
+        for slat, slon in samples:
+            q = _overpass_query(slat, slon, search_r, cuisine_token)
             try:
                 resp = _post_overpass(client, q)
                 if resp.status_code == 429:
@@ -317,12 +548,14 @@ def find_places_to_eat_along_route(
             except json.JSONDecodeError:
                 return "Overpass returned invalid JSON."
 
-            for el in (chunk.get("elements") or [])[:80]:
+            for el in (chunk.get("elements") or [])[:85]:
                 eid = el.get("id")
                 et = el.get("type")
                 if eid is None or et not in ("node", "way", "relation"):
                     continue
                 merged[(str(et), int(eid))] = el
+
+    assert route is not None
 
     rows: list[tuple[float, float, str]] = []
     for el in merged.values():
@@ -346,15 +579,32 @@ def find_places_to_eat_along_route(
         except (TypeError, ValueError):
             continue
 
-        prog_m, off_m = _progress_and_distance_to_polyline(plat, plon, route)
-        if off_m > cor * 1.25:
+        if _haversine_m(plat, plon, o_la, o_lo) < buf:
             continue
+        if _haversine_m(plat, plon, d_la, d_lo) < buf:
+            continue
+
+        prog_m, off_m = _progress_and_distance_to_polyline(plat, plon, route)
+        slack = 180.0
+        if prog_m < lo_prog - slack or prog_m > hi_prog + slack:
+            continue
+        if off_m > cor * 1.28:
+            continue
+
+        nearest_area = "between endpoints"
+        if samples and area_labels:
+            bi = min(
+                range(len(samples)),
+                key=lambda j: _haversine_m(plat, plon, samples[j][0], samples[j][1]),
+            )
+            nearest_area = area_labels[bi] if bi < len(area_labels) else nearest_area
 
         cuisine_v = (tags.get("cuisine") or "").strip()
         km_along = prog_m / 1000.0
         parts = [
             f"- {name or '(no name in OSM)'}",
             f"  [{amenity}]",
+            f"  area: {nearest_area}",
             f"  ~{km_along:.1f} km along route, ~{int(round(off_m))} m from path",
         ]
         if cuisine_v:
@@ -369,24 +619,32 @@ def find_places_to_eat_along_route(
 
     if not rows:
         msg = (
-            f"No OSM-tagged restaurants/cafés/fast food within ~{cor} m of the route from "
-            f"{o_lab or origin} to {d_lab or destination}."
+            f"No OSM restaurants/cafés/fast food found **between** {o_lab or origin} and {d_lab or destination} "
+            f"(excluding ~{buf} m around each endpoint)."
         )
         if cuisine_token:
-            msg += f" (cuisine filter: {cuisine_token})"
-        msg += " Try widening corridor_radius_meters or dropping the cuisine filter."
+            msg += f" Cuisine filter: {cuisine_token}."
+        msg += " Try increasing exclude_endpoints_meters slightly, intermediate_search_radius_meters, or drop cuisine."
         return msg
 
-    sample_n = len(samples)
+    mid_note = (
+        " (short trip: used middle segment of path)"
+        if short_route_fallback
+        else ""
+    )
     header = [
-        f"Along route ({profile}): {o_lab} → {d_lab}",
-        f"Corridor ≈{cor} m from path | {sample_n} sample points (OSM + OSRM; approximate)",
+        f"In-between stops ({profile}){mid_note}: {o_lab} → {d_lab}",
+        (
+            f"Excluded origin/destination buffers: ~{buf} m along-route window [{lo_prog / 1000:.1f}–{hi_prog / 1000:.1f}] km "
+            f"and POIs within ~{buf} m straight-line of each endpoint | {len(samples)} intermediate areas | "
+            f"Search radius ~{search_r} m each (OSRM + Overpass + Nominatim)"
+        ),
     ]
     if cuisine_token:
         header.append(f"Filter: cuisine={cuisine_token}")
     footer = (
-        "\nSource: OSRM route + OpenStreetMap via Overpass (ODbL). "
-        "Not all roadside options are included — confirm before you go."
+        "\nSource: OSRM route, OpenStreetMap via Overpass, labels via Nominatim (ODbL / OSM). "
+        "Intermediate coverage is approximate — confirm before you go."
     )
     return "\n".join(header) + "\n" + "\n".join(r[2] for r in rows) + footer
 
@@ -514,10 +772,12 @@ def build_agent():
             "- For a **single area** (neighborhood, city, station, address): use "
             "find_places_to_eat with a clear area string. Default radius is fine unless "
             "the user asks otherwise; keep radius_meters between 200 and 2500.\n"
-            "- For **food along a journey** (between two places, 'on the way', 'during the drive', "
-            "or combined travel + dining): use find_places_to_eat_along_route with origin and "
-            "destination and the same travel mode when specified (driving, walking, cycling; "
-            "default driving). Adjust corridor_radius_meters (250–800) only if they ask.\n"
+            "- For **food between two places** (source + destination, excluding stops at each end): "
+            "use find_places_to_eat_along_route. It samples **intermediate** parts of the OSRM path, "
+            "tags areas with Nominatim reverse (throttled), searches Overpass around those spots, "
+            "and drops POIs near the geocoded origin or destination (see exclude_endpoints_meters, "
+            "default 2500). Tune intermediate_search_radius_meters or max_distance_from_route_meters "
+            "only if the user asks.\n"
             "You do not compute travel duration — only where to eat along the path; if they need "
             "drive time as well, tell them to use the orchestrator app or a travel-time assistant.\n"
             "Optional cuisine filter: simple OSM token (italian, etc.) or omit. "
