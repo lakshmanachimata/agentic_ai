@@ -1,17 +1,20 @@
 """
-Multi-agent orchestrator: routes each query to the weather and/or travel specialists.
+Multi-agent orchestrator: routes each query to weather, travel-time, and dining
+specialists.
 
-Specialists are the full ReAct agents from weather_agent.py and travel_agent.py,
-invoked as tools so the orchestrator can call one, the other, or both.
+Specialists are the full ReAct agents from weather_agent.py, travel_agent.py,
+and restaurant_agent.py, invoked as tools so the orchestrator can delegate as needed.
 
 Requires Ollama running locally with the model pulled:
   ollama pull qwen2.5:latest
+
+Interactive mode keeps session memory across turns (``/reset`` clears it).
 
 Run (interactive; Ctrl+D / EOF to exit):
   python orchestrator_agent.py
 
 One-off:
-  python orchestrator_agent.py "Weather in Rome and drive time from Milan to Rome"
+  python orchestrator_agent.py "Weather in Rome, drive time from Milan to Rome, and cafés near the Colosseum"
 """
 
 from __future__ import annotations
@@ -20,10 +23,14 @@ import sys
 from typing import Any
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import MemorySaver
 
+from agent_common import invoke_agent, run_interactive
+
+from restaurant_agent import build_agent as build_restaurant_agent
+from restaurant_agent import run_query as run_restaurant_query
 from travel_agent import build_agent as build_travel_agent
 from travel_agent import run_query as run_travel_query
 from weather_agent import build_agent as build_weather_agent
@@ -33,6 +40,7 @@ from weather_agent import run_query as run_weather_query
 def build_agent():
     weather_graph = build_weather_agent()
     travel_graph = build_travel_agent()
+    restaurant_graph = build_restaurant_agent()
 
     @tool
     def ask_weather_specialist(query: str) -> str:
@@ -54,6 +62,16 @@ def build_agent():
         """
         return run_travel_query(travel_graph, query.strip())
 
+    @tool
+    def ask_restaurant_specialist(query: str) -> str:
+        """Delegate to the dining / restaurant specialist agent.
+
+        Use for places to eat near an area, or **along a route** between two places
+        (OpenStreetMap + OSRM; no API key). Pass a clear question with locations
+        (e.g. 'Italian near Termini, Rome' or 'Coffee stops along driving from Boston to Portland ME').
+        """
+        return run_restaurant_query(restaurant_graph, query.strip())
+
     llm = ChatOllama(
         model="qwen2.5:latest",
         base_url="http://127.0.0.1:11434",
@@ -61,30 +79,31 @@ def build_agent():
     )
     return create_agent(
         llm,
-        tools=[ask_weather_specialist, ask_travel_specialist],
+        tools=[
+            ask_weather_specialist,
+            ask_travel_specialist,
+            ask_restaurant_specialist,
+        ],
         system_prompt=(
-            "You are a coordinator for weather and travel-time specialists. "
-            "Never invent weather or routing data — always use the tools.\n"
+            "You are a coordinator for weather, travel-time, and dining specialists. "
+            "Never invent weather, routing, or venue data — always use the tools.\n"
             "- Weather only → call ask_weather_specialist once with a focused question.\n"
             "- Travel time / route only → call ask_travel_specialist once.\n"
-            "- Both (e.g. weather at a destination AND how to get there) → call "
-            "the relevant tool(s); you may call both in the same turn.\n"
+            "- Dining / restaurants / cafés near an area **or along a route** → "
+            "call ask_restaurant_specialist once with a focused question.\n"
+            "- Combine as needed (e.g. trip + weather at destination + where to eat nearby, "
+            "or drive time **and** food along the same route); you may call several tools in the same turn.\n"
             "Rewrite the user's request into a clear sub-question for each specialist. "
-            "After tool results return, give one concise combined answer."
+            "After tool results return, give one concise combined answer.\n"
+            "Use prior turns in this session when the user refers to places, routes, "
+            "or earlier answers (e.g. 'there', 'same trip', 'that city')."
         ),
+        checkpointer=MemorySaver(),
     )
 
 
-def run_query(graph: Any, question: str) -> str:
-    result = graph.invoke({"messages": [{"role": "user", "content": question}]})
-    messages = result.get("messages", [])
-    if not messages:
-        return ""
-
-    last = messages[-1]
-    if isinstance(last, AIMessage):
-        return (last.content or "").strip()
-    return str(getattr(last, "content", last))
+def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
+    return invoke_agent(graph, question, thread_id=thread_id)
 
 
 def main() -> None:
@@ -94,25 +113,11 @@ def main() -> None:
         print(run_query(graph, q_one))
         return
 
-    print(
-        "Orchestrator — ask about weather, travel time, or both. Ctrl+D (EOF) to exit."
+    run_interactive(
+        "Orchestrator",
+        "ask about weather, travel time, places to eat, or combine them.",
+        graph,
     )
-    while True:
-        try:
-            q = input("> ").strip()
-        except EOFError:
-            print()
-            break
-        except KeyboardInterrupt:
-            print()
-            continue
-        if not q:
-            continue
-        try:
-            print(run_query(graph, q))
-        except KeyboardInterrupt:
-            print("\n(interrupted)")
-        print()
 
 
 if __name__ == "__main__":

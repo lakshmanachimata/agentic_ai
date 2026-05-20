@@ -7,6 +7,8 @@ Routing: OSRM public demo — https://project-osrm.org
 Requires Ollama running locally with the model pulled:
   ollama pull qwen2.5:latest
 
+Interactive mode keeps session memory across turns (``/reset`` clears it).
+
 Run (interactive; Ctrl+D / EOF to exit):
   python travel_agent.py
 
@@ -21,10 +23,12 @@ import sys
 from typing import Any, Literal
 
 import httpx
-from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langchain.agents import create_agent
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import MemorySaver
+
+from agent_common import invoke_agent, run_interactive
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OSRM_URL = "https://router.project-osrm.org/route/v1"
@@ -195,21 +199,16 @@ def build_agent():
             "(driving, walking, or cycling). Summarize the tool output in plain "
             "language. If the user does not specify a mode, assume driving. "
             "Mention that times are estimates without live traffic. "
-            "You cannot route public transit with the available free APIs."
+            "You cannot route public transit with the available free APIs. "
+            "Use earlier messages in this session when the user refers to places "
+            "or modes without repeating them (e.g. 'walking instead?', 'back the other way')."
         ),
+        checkpointer=MemorySaver(),
     )
 
 
-def run_query(graph: Any, question: str) -> str:
-    result = graph.invoke({"messages": [{"role": "user", "content": question}]})
-    messages = result.get("messages", [])
-    if not messages:
-        return ""
-
-    last = messages[-1]
-    if isinstance(last, AIMessage):
-        return (last.content or "").strip()
-    return str(getattr(last, "content", last))
+def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
+    return invoke_agent(graph, question, thread_id=thread_id)
 
 
 def main() -> None:
@@ -219,23 +218,7 @@ def main() -> None:
         print(run_query(graph, q_one))
         return
 
-    print("Travel-time agent — ask about trips between places. Ctrl+D (EOF) to exit.")
-    while True:
-        try:
-            q = input("> ").strip()
-        except EOFError:
-            print()
-            break
-        except KeyboardInterrupt:
-            print()
-            continue
-        if not q:
-            continue
-        try:
-            print(run_query(graph, q))
-        except KeyboardInterrupt:
-            print("\n(interrupted)")
-        print()
+    run_interactive("Travel-time agent", "ask about trips between places.", graph)
 
 
 if __name__ == "__main__":

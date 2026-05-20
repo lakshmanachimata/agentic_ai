@@ -4,6 +4,8 @@ LangChain agent (ReAct-style graph): Ollama (qwen2.5:latest) + worldwide weather
 Requires Ollama running locally with the model pulled:
   ollama pull qwen2.5:latest
 
+Interactive mode keeps session memory across turns (``/reset`` clears it).
+
 Run (interactive; Ctrl+D / EOF to exit):
   python weather_agent.py
 
@@ -19,10 +21,12 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from langchain_core.messages import AIMessage
 from langchain_core.tools import tool
 from langchain.agents import create_agent
 from langchain_ollama import ChatOllama
+from langgraph.checkpoint.memory import MemorySaver
+
+from agent_common import invoke_agent, run_interactive
 
 
 def _wttr_value(obj: Any) -> str:
@@ -93,21 +97,16 @@ def build_agent():
             "You are a concise weather assistant. When the user asks about weather "
             "for any place, call get_weather with a specific location string. "
             "Summarize the tool output clearly; mention resolved area if it differs "
-            "from what the user said. Use metric units as returned by the tool."
+            "from what the user said. Use metric units as returned by the tool. "
+            "Use earlier messages in this session when the user refers to a place "
+            "without repeating the full name (e.g. 'there', 'same city', 'and tomorrow?')."
         ),
+        checkpointer=MemorySaver(),
     )
 
 
-def run_query(graph: Any, question: str) -> str:
-    result = graph.invoke({"messages": [{"role": "user", "content": question}]})
-    messages = result.get("messages", [])
-    if not messages:
-        return ""
-
-    last = messages[-1]
-    if isinstance(last, AIMessage):
-        return (last.content or "").strip()
-    return str(getattr(last, "content", last))
+def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
+    return invoke_agent(graph, question, thread_id=thread_id)
 
 
 def main() -> None:
@@ -117,23 +116,7 @@ def main() -> None:
         print(run_query(graph, q_one))
         return
 
-    print("Weather agent — ask about any place. Ctrl+D (EOF) to exit.")
-    while True:
-        try:
-            q = input("> ").strip()
-        except EOFError:
-            print()
-            break
-        except KeyboardInterrupt:
-            print()
-            continue
-        if not q:
-            continue
-        try:
-            print(run_query(graph, q))
-        except KeyboardInterrupt:
-            print("\n(interrupted)")
-        print()
+    run_interactive("Weather agent", "ask about any place.", graph)
 
 
 if __name__ == "__main__":
