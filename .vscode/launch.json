@@ -1,0 +1,110 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Weather Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/weather_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Weather Agent (one question)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/weather_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": ["What is the weather in Tokyo today?"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Travel Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/travel_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Travel Agent (one question)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/travel_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": ["How long to drive from Paris to Lyon?"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Orchestrator Agent",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/orchestrator_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Orchestrator Agent (one question)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/orchestrator_agent.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": ["Weather in Boston and driving time to New York"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Run Client (orchestrator)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_agents.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Run Client (one question)",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_agents.py",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "args": ["Weather in Boston and driving time to New York"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    },
+    {
+      "name": "Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "All Agents (parallel — not for interactive debugging)",
+      "configurations": [
+        "Weather Agent",
+        "Travel Agent",
+        "Orchestrator Agent"
+      ],
+      "stopAll": true
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.terminal.activateEnvironment": true,
+
+  "workbench.sideBar.location": "left",
+  "workbench.panel.defaultLocation": "bottom",
+  "workbench.editor.showTabs": "multiple",
+
+  "debug.openDebug": "openOnSessionStart",
+  "debug.toolBarLocation": "docked",
+  "debug.focusEditorOnBreak": true,
+  "debug.console.closeOnEnd": false,
+  "debug.internalConsoleOptions": "neverOpen",
+
+  "terminal.integrated.defaultLocation": "view"
+}
