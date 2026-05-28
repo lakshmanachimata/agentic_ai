@@ -1,11 +1,12 @@
 """
-LangChain agent (ReAct-style graph): Ollama (qwen2.5:latest) + travel time via OSM/Nominatim + OSRM.
+LangChain agent (ReAct-style graph): Ollama (qwen3.5:4b) + travel time via OSM/Nominatim + OSRM.
 
 Geocoding: Nominatim (OpenStreetMap) — https://nominatim.org
 Routing: OSRM public demo — https://project-osrm.org
+Weather along route: wttr.in (free)
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:latest
+  ollama pull qwen3.5:4b
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -13,13 +14,13 @@ Run (interactive; Ctrl+D / EOF to exit):
   python travel_agent.py
 
 One-off:
-  python travel_agent.py "How long to drive from Paris to Lyon?"
+  python travel_agent.py "Drive from Paris to Lyon leaving at 9 AM — towns and weather on the way"
 """
 
 from __future__ import annotations
 
-import json
 import sys
+from datetime import timedelta
 from typing import Any, Literal
 
 import httpx
@@ -29,6 +30,17 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_common import invoke_agent, run_interactive
+from route_common import (
+    OsrmRoute,
+    discover_intermediate_stops,
+    fetch_osrm_route,
+    format_distance,
+    format_duration,
+    format_time,
+    geocode,
+    parse_start_time,
+    weather_summary_at_time,
+)
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OSRM_URL = "https://router.project-osrm.org/route/v1"
@@ -59,59 +71,8 @@ def _normalize_profile(mode: str) -> Profile | str:
     return _PROFILE_ALIASES.get(key, key)
 
 
-def _format_duration(seconds: float) -> str:
-    total = int(round(seconds))
-    if total < 60:
-        return f"{total} sec"
-    hours, rem = divmod(total, 3600)
-    minutes, secs = divmod(rem, 60)
-    parts: list[str] = []
-    if hours:
-        parts.append(f"{hours} hr" + ("s" if hours != 1 else ""))
-    if minutes:
-        parts.append(f"{minutes} min")
-    elif hours and secs:
-        parts.append(f"{secs} sec")
-    return " ".join(parts) if parts else f"{secs} sec"
-
-
-def _format_distance(meters: float) -> str:
-    if meters >= 1000:
-        return f"{meters / 1000:.1f} km"
-    return f"{int(round(meters))} m"
-
-
 def _geocode(client: httpx.Client, place: str) -> dict[str, Any] | str:
-    place = place.strip()
-    if not place:
-        return "Error: empty place name."
-
-    try:
-        resp = client.get(
-            NOMINATIM_URL,
-            params={"q": place, "format": "json", "limit": 1},
-            headers={"User-Agent": USER_AGENT},
-            timeout=30.0,
-        )
-        resp.raise_for_status()
-        results = resp.json()
-    except httpx.HTTPError as e:
-        return f"Geocoding HTTP error for '{place}': {e}"
-    except json.JSONDecodeError:
-        return f"Geocoding returned invalid data for '{place}'."
-
-    if not results:
-        return f"Could not find a location for '{place}'. Try a more specific name."
-
-    hit = results[0]
-    try:
-        lat = float(hit["lat"])
-        lon = float(hit["lon"])
-    except (KeyError, TypeError, ValueError):
-        return f"Geocoding response missing coordinates for '{place}'."
-
-    label = hit.get("display_name", place)
-    return {"lat": lat, "lon": lon, "label": label}
+    return geocode(client, place)
 
 
 @tool
@@ -122,7 +83,6 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
         origin: Start location (city, address, landmark, or 'lat,lon').
         destination: End location (same formats as origin).
         mode: Travel mode — driving (default), walking, or cycling.
-              Aliases like 'drive', 'walk', 'bike' are accepted.
 
     Uses OpenStreetMap geocoding and OSRM open routing (no API key).
     """
@@ -176,32 +136,103 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
         f"From: {origin_res['label']}",
         f"To: {dest_res['label']}",
         f"Mode: {profile} ({mode_label})",
-        f"Estimated time: {_format_duration(duration_s)}",
-        f"Distance: {_format_distance(distance_m)}",
+        f"Estimated time: {format_duration(duration_s)}",
+        f"Distance: {format_distance(distance_m)}",
         "Source: OSRM on OpenStreetMap data (approximate; not live traffic).",
     ]
     return "\n".join(lines)
 
 
+@tool
+def get_route_stops_with_weather(
+    origin: str,
+    destination: str,
+    mode: str = "driving",
+    start_time: str = "",
+) -> str:
+    """Trip plan with major towns between origin and destination, drive time to each, and weather at arrival.
+
+    Args:
+        origin: Start location.
+        destination: End location.
+        mode: driving (default), walking, or cycling.
+        start_time: Departure from origin (e.g. '08:00', '9 AM', '2026-05-21 14:30').
+            If omitted, assumes **8:00 AM today**.
+
+    Excludes listing origin/destination as intermediate towns; shows estimated arrival at each town
+    and wttr.in forecast for that time. Also shows total trip time and weather at destination on arrival.
+    """
+    profile = _normalize_profile(mode)
+    if profile not in ("driving", "walking", "cycling"):
+        return f"Unsupported mode '{mode}'. Use driving, walking, or cycling."
+
+    depart = parse_start_time(start_time)
+
+    with httpx.Client() as client:
+        route_result = fetch_osrm_route(client, origin, destination, str(profile))
+        if isinstance(route_result, str):
+            return route_result
+        route: OsrmRoute = route_result
+
+        stops = discover_intermediate_stops(client, route, depart, max_towns=6)
+
+    arrive_dest = depart + timedelta(seconds=route.duration_s)
+    mode_label = {"driving": "by car", "walking": "on foot", "cycling": "by bicycle"}[profile]
+
+    lines = [
+        f"Route ({profile}, {mode_label}): {route.origin_label}",
+        f"  → {route.dest_label}",
+        f"Depart: {depart.strftime('%Y-%m-%d %H:%M')} (default 08:00 if start time not given)",
+        f"Total: {format_duration(route.duration_s)}, {format_distance(route.distance_m)}",
+        f"Estimated arrival at destination: {arrive_dest.strftime('%Y-%m-%d %H:%M')}",
+        "",
+        "Major towns along the way (excluding start and end):",
+    ]
+
+    if not stops:
+        lines.append("  (No distinct intermediate towns identified on this short or direct route.)")
+    else:
+        for i, stop in enumerate(stops, 1):
+            wx = weather_summary_at_time(stop.town, stop.arrival)
+            lines.extend(
+                [
+                    f"{i}. {stop.town}",
+                    f"   ~{format_duration(stop.duration_from_start_s)} from start "
+                    f"({stop.distance_km:.0f} km along route)",
+                    f"   Est. arrival: {format_time(stop.arrival)}",
+                    f"   Weather then: {wx}",
+                ]
+            )
+
+    dest_wx = weather_summary_at_time(destination, arrive_dest)
+    lines.extend(
+        [
+            "",
+            f"Destination ({route.dest_label.split(',')[0]}): arrive ~{format_time(arrive_dest)}",
+            f"Weather at arrival: {dest_wx}",
+            "",
+            "Source: OSRM + Nominatim + wttr.in (estimates; no live traffic).",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_agent():
     llm = ChatOllama(
-        model="qwen2.5:latest",
+        model="qwen3.5:4b",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )
     return create_agent(
         llm,
-        tools=[get_travel_time],
+        tools=[get_travel_time, get_route_stops_with_weather],
         system_prompt=(
-            "You are a concise travel-time assistant. When the user asks how long "
-            "it takes to get from one place to another, call get_travel_time with "
-            "clear origin and destination strings and an appropriate mode "
-            "(driving, walking, or cycling). Summarize the tool output in plain "
-            "language. If the user does not specify a mode, assume driving. "
-            "Mention that times are estimates without live traffic. "
-            "You cannot route public transit with the available free APIs. "
-            "Use earlier messages in this session when the user refers to places "
-            "or modes without repeating them (e.g. 'walking instead?', 'back the other way')."
+            "You are a concise travel assistant. For simple A→B time questions use get_travel_time.\n"
+            "When the user wants towns **between** origin and destination, weather along the way, "
+            "or a trip itinerary with stops, use get_route_stops_with_weather with clear origin, "
+            "destination, mode (default driving), and start_time when they give one.\n"
+            "If they do not give a departure time, leave start_time empty (tool assumes 8:00 AM).\n"
+            "Summarize tool output clearly. Times are OSRM estimates without live traffic."
         ),
         checkpointer=MemorySaver(),
     )

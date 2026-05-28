@@ -6,7 +6,7 @@ Specialists are the full ReAct agents from weather_agent.py, travel_agent.py,
 and restaurant_agent.py, invoked as tools so the orchestrator can delegate as needed.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:latest
+  ollama pull qwen3.5:4b
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -56,9 +56,11 @@ def build_agent():
     def ask_travel_specialist(query: str) -> str:
         """Delegate to the travel-time specialist agent.
 
-        Use for how long it takes to go between places, route distance, or
-        driving/walking/cycling duration. Pass origin, destination, and mode
-        when known (e.g. 'Driving time from Boston to New York').
+        Use for travel time, major towns between origin and destination, estimated
+        arrival at each town, and weather at those times. Include start_time from
+        origin when the user gives it (otherwise specialist assumes 8:00 AM).
+        Pass origin, destination, and mode (e.g. 'Drive Boston to NYC leaving 9 AM,
+        towns and weather along the way').
         """
         return run_travel_query(travel_graph, query.strip())
 
@@ -66,14 +68,14 @@ def build_agent():
     def ask_restaurant_specialist(query: str) -> str:
         """Delegate to the dining / restaurant specialist agent.
 
-        Use for places to eat near an area, or **between** origin and destination (excluding
-        endpoint zones — OSRM + OSM + Nominatim; no API key). Pass a clear question with locations
-        (e.g. 'Italian near Termini, Rome' or 'Lunch stops between Boston and Portland ME, not at either city').
+        Use for dining near an area, or **at intermediate towns** on a route between two places
+        (excludes origin/destination; pass start_time if user gives departure, else 8 AM default).
+        (e.g. 'Restaurants in towns between Boston and Portland ME' or 'Italian food near Le Marais').
         """
         return run_restaurant_query(restaurant_graph, query.strip())
 
     llm = ChatOllama(
-        model="qwen2.5:latest",
+        model="qwen3.5:4b",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )

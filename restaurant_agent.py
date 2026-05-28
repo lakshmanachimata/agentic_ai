@@ -6,7 +6,7 @@ LangChain agent: Ollama + nearby places to eat from OpenStreetMap (free tier).
 - Routes: OSRM public demo (same as travel_agent) to find places along a driving/walking/cycling path
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:latest
+  ollama pull qwen3.5:4b
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -33,6 +33,14 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_common import invoke_agent, run_interactive
+from route_common import (
+    OsrmRoute,
+    discover_intermediate_stops,
+    fetch_osrm_route,
+    format_duration,
+    format_time,
+    parse_start_time,
+)
 from travel_agent import OSRM_URL, USER_AGENT as TRAVEL_HTTP_USER_AGENT, _geocode, _normalize_profile
 
 OVERPASS_URLS = (
@@ -758,30 +766,152 @@ def find_places_to_eat(
     return "\n".join(header) + "\n" + "\n".join(r[1] for r in rows) + footer
 
 
+def _poi_lines_from_elements(
+    elements: list[dict[str, Any]],
+    ref_lat: float,
+    ref_lon: float,
+    cap: int,
+) -> list[str]:
+    rows: list[tuple[float, str]] = []
+    for el in elements:
+        tags = el.get("tags") or {}
+        name = (tags.get("name") or "").strip()
+        amenity = (tags.get("amenity") or "").strip()
+        if not amenity:
+            continue
+        el_lat = el.get("lat")
+        el_lon = el.get("lon")
+        if el_lat is None or el_lon is None:
+            center = el.get("center") or {}
+            el_lat = center.get("lat")
+            el_lon = center.get("lon")
+        if el_lat is None or el_lon is None:
+            continue
+        try:
+            plat, plon = float(el_lat), float(el_lon)
+        except (TypeError, ValueError):
+            continue
+        dist = _haversine_m(ref_lat, ref_lon, plat, plon)
+        cuisine_v = (tags.get("cuisine") or "").strip()
+        parts = [f"  - {name or '(no name)'} [{amenity}] ~{int(round(dist))} m"]
+        if cuisine_v:
+            parts.append(f"    cuisine: {cuisine_v}")
+        rows.append((dist, "\n".join(parts)))
+    rows.sort(key=lambda t: t[0])
+    return [r[1] for r in rows[:cap]]
+
+
+@tool
+def find_restaurants_at_towns_on_route(
+    origin: str,
+    destination: str,
+    mode: str = "driving",
+    start_time: str = "",
+    max_towns: int = 5,
+    per_town_max: int = 4,
+    search_radius_meters: int = 700,
+    cuisine: str = "",
+) -> str:
+    """Restaurants at major **intermediate towns** between origin and destination (not at endpoints).
+
+    Uses OSRM + Nominatim to find towns along the route, then Overpass for eateries in each town.
+    ``start_time`` is departure from origin (default **8:00 AM today** if empty) — shown as est. arrival per town.
+
+    Args:
+        origin, destination: Place names or addresses.
+        mode: driving (default), walking, cycling.
+        start_time: e.g. '08:00', '9 AM' — optional.
+        max_towns: How many intermediate towns to list (max 6).
+        per_town_max: Max restaurants per town (max 6).
+        search_radius_meters: Overpass radius around each town center (400–1000).
+        cuisine: Optional OSM cuisine filter.
+    """
+    cap_towns = max(1, min(int(max_towns), 6))
+    cap_each = max(1, min(int(per_town_max), 6))
+    search_r = max(400, min(int(search_radius_meters), 1000))
+    cuisine_token = _sanitize_cuisine_token(cuisine) if cuisine else None
+    depart = parse_start_time(start_time)
+
+    with httpx.Client() as client:
+        route_result = fetch_osrm_route(client, origin.strip(), destination.strip(), mode)
+        if isinstance(route_result, str):
+            return route_result
+        route: OsrmRoute = route_result
+        stops = discover_intermediate_stops(client, route, depart, max_towns=cap_towns)
+
+    if not stops:
+        return (
+            f"No distinct intermediate towns found between {route.origin_label} and {route.dest_label}. "
+            "Try find_places_to_eat_along_route for corridor search, or a longer route."
+        )
+
+    lines = [
+        f"Restaurants at towns between {route.origin_label.split(',')[0]} → {route.dest_label.split(',')[0]}",
+        f"Mode: {route.profile} | Depart ~{depart.strftime('%H:%M')} (8:00 AM default if not specified)",
+        f"Excludes dining at origin and destination.",
+        "",
+    ]
+
+    with httpx.Client() as client:
+        for stop in stops:
+            q = _overpass_query(stop.lat, stop.lon, search_r, cuisine_token)
+            try:
+                resp = _post_overpass(client, q)
+                if resp.status_code != 200:
+                    lines.append(
+                        f"### {stop.town} (arrive ~{format_time(stop.arrival)}, "
+                        f"{format_duration(stop.duration_from_start_s)} from start)"
+                    )
+                    lines.append("  (Overpass busy — skip)")
+                    continue
+                data = resp.json()
+            except httpx.HTTPError:
+                lines.append(f"### {stop.town} — search error")
+                continue
+
+            poi_lines = _poi_lines_from_elements(
+                (data.get("elements") or [])[:60],
+                stop.lat,
+                stop.lon,
+                cap_each,
+            )
+            lines.append(
+                f"### {stop.town} — est. arrive {format_time(stop.arrival)} "
+                f"({format_duration(stop.duration_from_start_s)} from start, ~{stop.distance_km:.0f} km along route)"
+            )
+            if poi_lines:
+                lines.extend(poi_lines)
+            else:
+                lines.append("  (no OSM restaurants/cafés/fast food in this radius)")
+            lines.append("")
+
+    lines.append(
+        "Source: OSRM + Nominatim + Overpass (ODbL). Verify hours and names before visiting."
+    )
+    return "\n".join(lines)
+
+
 def build_agent():
     llm = ChatOllama(
-        model="qwen2.5:latest",
+        model="qwen3.5:4b",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )
     return create_agent(
         llm,
-        tools=[find_places_to_eat, find_places_to_eat_along_route],
+        tools=[
+            find_places_to_eat,
+            find_places_to_eat_along_route,
+            find_restaurants_at_towns_on_route,
+        ],
         system_prompt=(
             "You help travelers find places to eat using OpenStreetMap (free data).\n"
-            "- For a **single area** (neighborhood, city, station, address): use "
-            "find_places_to_eat with a clear area string. Default radius is fine unless "
-            "the user asks otherwise; keep radius_meters between 200 and 2500.\n"
-            "- For **food between two places** (source + destination, excluding stops at each end): "
-            "use find_places_to_eat_along_route. It samples **intermediate** parts of the OSRM path, "
-            "tags areas with Nominatim reverse (throttled), searches Overpass around those spots, "
-            "and drops POIs near the geocoded origin or destination (see exclude_endpoints_meters, "
-            "default 2500). Tune intermediate_search_radius_meters or max_distance_from_route_meters "
-            "only if the user asks.\n"
-            "You do not compute travel duration — only where to eat along the path; if they need "
-            "drive time as well, tell them to use the orchestrator app or a travel-time assistant.\n"
-            "Optional cuisine filter: simple OSM token (italian, etc.) or omit. "
-            "Summarize clearly; data may be incomplete. Never invent venues."
+            "- **Single area**: find_places_to_eat (radius 200–2500 m, default 800).\n"
+            "- **Source + destination, restaurants grouped by intermediate towns** (excludes "
+            "origin/destination): find_restaurants_at_towns_on_route. Pass start_time if given; "
+            "otherwise tool assumes 8:00 AM departure.\n"
+            "- **Corridor search** along the path (not grouped by town): find_places_to_eat_along_route.\n"
+            "Optional cuisine: OSM token (italian, etc.). Never invent venues."
         ),
         checkpointer=MemorySaver(),
     )

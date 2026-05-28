@@ -9,7 +9,7 @@ Interactive mode uses session memory (same thread) so follow-up questions keep
 context; type ``/reset`` to clear. Multiple ``-q`` flags share one session.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:latest
+  ollama pull qwen3.5:4b
 
 Examples:
   python run_agents.py
