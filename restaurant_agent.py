@@ -906,7 +906,7 @@ def build_agent():
         ],
         system_prompt=(
             "You help travelers find places to eat using OpenStreetMap (free data).\n"
-            "- **Single area**: find_places_to_eat (radius 200–2500 m, default 800).\n"
+            "- **Single area**: find_places_to_eat (radius 2000 - 5000 m, default 3000).\n"
             "- **Source + destination, restaurants grouped by intermediate towns** (excludes "
             "origin/destination): find_restaurants_at_towns_on_route. Pass start_time if given; "
             "otherwise tool assumes 8:00 AM departure.\n"
