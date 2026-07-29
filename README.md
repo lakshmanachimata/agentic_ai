@@ -8,6 +8,7 @@ You can ask about:
 - Towns in between a route
 - Weather at those towns at arrival time
 - Restaurants (in an area, on route, or by towns on route)
+- Travel calendar events (`.ics` + Google Calendar add link; optional API push)
 
 ## 1) What you need
 
@@ -28,7 +29,7 @@ pip install -r requirements.txt
 Start Ollama (if not already running), then pull the model used by the scripts:
 
 ```bash
-ollama pull qwen3.5:9b
+ollama pull qwen2.5:7b
 ```
 
 ## 3) Easiest way to run
@@ -74,6 +75,12 @@ python run_agents.py --client weather
 python run_agents.py --client restaurants
 ```
 
+### Calendar only
+
+```bash
+python run_agents.py --client calendar
+```
+
 ## 5) Example questions
 
 ### Travel + intermediate towns + weather at arrival
@@ -96,6 +103,14 @@ From Paris to Lyon, list restaurants town-by-town for intermediate towns only (e
 Find good restaurants near London Bridge.
 ```
 
+### Calendar event / trip on Google Calendar
+
+```text
+Create a calendar event for driving Paris to Lyon tomorrow at 9 AM lasting 4 hours.
+```
+
+Or with the orchestrator after a travel question: `add that trip to my calendar`.
+
 ### Combined request (best with orchestrator)
 
 ```text
@@ -108,12 +123,17 @@ Travel from Milan to Rome tomorrow at 8 AM, show towns in between with weather, 
 python run_agents.py "Weather in Tokyo"
 python run_agents.py -c travel "Drive from Boston to New York at 7 AM with towns and weather"
 python run_agents.py -c restaurants "Restaurants between Boston and Portland, not at endpoints"
+python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomorrow 9 AM for 4 hours"
 ```
 
 ## 7) Notes (important)
 
 - APIs used are free/public:
   - Nominatim / Overpass / OSRM / wttr.in
+- Calendar agent always writes an `.ics` file under `calendar_events/` and a Google Calendar quick-add link (no API key).
+- Optional Google Calendar API push: put OAuth desktop `credentials.json` in this folder, then
+  `pip install google-api-python-client google-auth-oauthlib google-auth-httplib2`
+  and create an event (browser auth saves `token.json`).
 - Data may be incomplete or approximate.
 - Travel time has no live traffic.
 - Always verify restaurant details before visiting.
@@ -131,4 +151,5 @@ python run_agents.py -c restaurants "Restaurants between Boston and Portland, no
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup
 - `restaurant_agent.py` - restaurant tools
+- `calendar_agent.py` - travel calendar (.ics + Google links / optional API)
 - `route_common.py` - shared route/time/weather helpers

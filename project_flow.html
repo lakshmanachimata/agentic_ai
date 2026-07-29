@@ -1,0 +1,1356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agentic AI — Project Flow Explainer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Fragment+Mono:wght@400;500&family=Source+Sans+3:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #16201c;
+      --ink-soft: #3a4a43;
+      --muted: #5c6f66;
+      --paper: #eef3ef;
+      --paper-2: #e2ebe4;
+      --panel: #f7faf8;
+      --line: #c5d4cb;
+      --teal: #0d6e5f;
+      --teal-deep: #084f44;
+      --mint: #9fd9c4;
+      --amber: #c47a1a;
+      --amber-soft: #f3dfbf;
+      --coral: #c45a3a;
+      --sky: #3a7ca5;
+      --code-bg: #1a2420;
+      --code-fg: #d7e8df;
+      --shadow: 0 18px 50px rgba(22, 32, 28, 0.08);
+      --radius: 14px;
+      --max: 1080px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Source Sans 3", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(ellipse 80% 50% at 10% -10%, rgba(159, 217, 196, 0.45), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 100% 0%, rgba(243, 223, 191, 0.5), transparent 50%),
+        linear-gradient(180deg, #f4f8f5 0%, var(--paper) 40%, #e8f0eb 100%);
+      line-height: 1.65;
+      font-size: 1.05rem;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.35;
+      background-image:
+        linear-gradient(rgba(13, 110, 95, 0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(13, 110, 95, 0.04) 1px, transparent 1px);
+      background-size: 28px 28px;
+      z-index: 0;
+    }
+
+    a { color: var(--teal-deep); text-underline-offset: 3px; }
+    a:hover { color: var(--coral); }
+
+    .wrap {
+      position: relative;
+      z-index: 1;
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 1.25rem 5rem;
+    }
+
+    /* —— Nav —— */
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      backdrop-filter: blur(12px);
+      background: rgba(238, 243, 239, 0.82);
+      border-bottom: 1px solid rgba(197, 212, 203, 0.8);
+    }
+    .topnav-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 800;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      color: var(--teal-deep);
+      text-decoration: none;
+    }
+    .brand span { color: var(--amber); }
+    .nav-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem 0.9rem;
+      list-style: none;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+    .nav-links a {
+      text-decoration: none;
+      color: var(--ink-soft);
+    }
+    .nav-links a:hover { color: var(--teal); }
+
+    /* —— Hero —— */
+    .hero {
+      padding: 3.5rem 0 2.5rem;
+      animation: rise 0.7s ease-out both;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .hero-kicker {
+      display: inline-block;
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--teal);
+      margin-bottom: 1rem;
+      animation: rise 0.7s 0.1s ease-out both;
+    }
+    .hero h1 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.4rem, 6vw, 3.6rem);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      max-width: 14ch;
+      margin-bottom: 1.1rem;
+      animation: rise 0.7s 0.18s ease-out both;
+    }
+    .hero h1 em {
+      font-style: normal;
+      color: var(--teal);
+    }
+    .hero-lead {
+      font-size: 1.2rem;
+      color: var(--ink-soft);
+      max-width: 38rem;
+      margin-bottom: 1.75rem;
+      animation: rise 0.7s 0.28s ease-out both;
+    }
+    .hero-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      animation: rise 0.7s 0.38s ease-out both;
+    }
+    .chip {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.72rem;
+      padding: 0.45rem 0.75rem;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 999px;
+      color: var(--ink-soft);
+    }
+    .chip.hot {
+      background: var(--teal);
+      color: #fff;
+      border-color: var(--teal);
+    }
+
+    /* —— Sections —— */
+    section {
+      margin-top: 3.5rem;
+      scroll-margin-top: 4.5rem;
+    }
+    .section-label {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--amber);
+      margin-bottom: 0.5rem;
+    }
+    h2 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.6rem, 3.5vw, 2.1rem);
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+      margin-bottom: 0.75rem;
+    }
+    h3 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 700;
+      font-size: 1.2rem;
+      margin: 1.6rem 0 0.55rem;
+      letter-spacing: -0.015em;
+    }
+    p { margin-bottom: 0.9rem; color: var(--ink-soft); }
+    .lead { font-size: 1.12rem; color: var(--ink); }
+
+    /* —— Analogy strip —— */
+    .analogy {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      margin-top: 1.5rem;
+    }
+    .analogy article {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.15rem 1.2rem;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+    .analogy article:hover {
+      transform: translateY(-3px);
+      box-shadow: var(--shadow);
+    }
+    .analogy .role {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.7rem;
+      color: var(--teal);
+      margin-bottom: 0.35rem;
+    }
+    .analogy h4 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 1.05rem;
+      margin-bottom: 0.35rem;
+    }
+    .analogy p { font-size: 0.95rem; margin: 0; }
+
+    /* —— Panels —— */
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1.35rem 1.4rem;
+      margin-top: 1.2rem;
+      box-shadow: var(--shadow);
+    }
+    .panel.dark {
+      background: var(--code-bg);
+      border-color: #2a3832;
+      color: var(--code-fg);
+    }
+    .panel.dark p { color: #a8c0b5; }
+    .panel.amber {
+      background: linear-gradient(135deg, #fff8ec, #f7edd8);
+      border-color: #e2c792;
+    }
+    .callout {
+      border-left: 3px solid var(--teal);
+      padding: 0.85rem 1rem;
+      margin: 1.1rem 0;
+      background: rgba(159, 217, 196, 0.22);
+      border-radius: 0 10px 10px 0;
+    }
+    .callout strong { color: var(--teal-deep); }
+    .warn {
+      border-left-color: var(--amber);
+      background: rgba(243, 223, 191, 0.45);
+    }
+
+    /* —— Stack table —— */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.7rem 0.85rem;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+    }
+    th {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    code, .mono {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.86em;
+    }
+    code {
+      background: rgba(13, 110, 95, 0.1);
+      padding: 0.12em 0.35em;
+      border-radius: 4px;
+      color: var(--teal-deep);
+    }
+    .panel.dark code {
+      background: rgba(159, 217, 196, 0.12);
+      color: var(--mint);
+    }
+
+    pre {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.78rem;
+      line-height: 1.55;
+      overflow-x: auto;
+      background: var(--code-bg);
+      color: var(--code-fg);
+      padding: 1.1rem 1.2rem;
+      border-radius: 10px;
+      margin: 0.9rem 0;
+    }
+    .tok-green { color: #7dcbab; }
+    .tok-amber { color: #e8b86d; }
+    .tok-coral { color: #e89a84; }
+    .tok-sky { color: #7eb8d8; }
+    .tok-dim { color: #6d8278; }
+
+    /* —— Architecture flow —— */
+    .arch {
+      margin-top: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.65rem;
+    }
+    .arch-node {
+      border-radius: var(--radius);
+      padding: 1rem 1.15rem;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      position: relative;
+      animation: pulse-in 0.6s ease both;
+    }
+    .arch-node.user {
+      background: linear-gradient(135deg, #dff3eb, #cfeee2);
+      border-color: #9fd9c4;
+      text-align: center;
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 700;
+    }
+    .arch-node.orch {
+      background: linear-gradient(135deg, #084f44, #0d6e5f);
+      color: #fff;
+      border: none;
+    }
+    .arch-node.orch p { color: rgba(255,255,255,0.85); margin: 0.35rem 0 0; font-size: 0.92rem; }
+    .arch-node .tag {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.68rem;
+      opacity: 0.8;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .arch-arrow {
+      text-align: center;
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .specialists {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.65rem;
+    }
+    @media (min-width: 900px) {
+      .specialists { grid-template-columns: repeat(4, 1fr); }
+    }
+    @media (max-width: 600px) {
+      .specialists { grid-template-columns: 1fr; }
+    }
+    .spec {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1rem;
+    }
+    .spec.weather { border-top: 3px solid var(--sky); }
+    .spec.travel { border-top: 3px solid var(--amber); }
+    .spec.food { border-top: 3px solid var(--coral); }
+    .spec.calendar { border-top: 3px solid #5b6bbf; }
+    .spec h4 {
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-size: 1rem;
+      margin-bottom: 0.3rem;
+    }
+    .spec ul {
+      margin: 0.5rem 0 0 1rem;
+      font-size: 0.88rem;
+      color: var(--ink-soft);
+    }
+    .apis {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      justify-content: center;
+      margin-top: 0.35rem;
+    }
+    .api-pill {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.7rem;
+      padding: 0.4rem 0.7rem;
+      border-radius: 8px;
+      background: #fff;
+      border: 1px dashed var(--line);
+      color: var(--ink-soft);
+    }
+
+    @keyframes pulse-in {
+      from { opacity: 0; transform: scale(0.98); }
+      to { opacity: 1; transform: scale(1); }
+    }
+
+    /* —— ReAct steps —— */
+    .steps {
+      counter-reset: step;
+      list-style: none;
+      margin-top: 1.2rem;
+      display: grid;
+      gap: 0.75rem;
+    }
+    .steps li {
+      counter-increment: step;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.9rem;
+      align-items: start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 1rem 1.1rem;
+    }
+    .steps li::before {
+      content: counter(step);
+      font-family: "Bricolage Grotesque", sans-serif;
+      font-weight: 800;
+      font-size: 1.1rem;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: var(--teal);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .steps strong {
+      display: block;
+      font-family: "Bricolage Grotesque", sans-serif;
+      margin-bottom: 0.2rem;
+      color: var(--ink);
+    }
+    .steps p { margin: 0; font-size: 0.95rem; }
+
+    /* —— Sequence —— */
+    .seq {
+      margin-top: 1rem;
+      display: grid;
+      gap: 0;
+    }
+    .seq-row {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 0.75rem;
+      padding: 0.85rem 0;
+      border-bottom: 1px dashed var(--line);
+      align-items: start;
+    }
+    @media (max-width: 600px) {
+      .seq-row { grid-template-columns: 1fr; }
+    }
+    .seq-who {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--teal);
+      padding-top: 0.15rem;
+    }
+    .seq-what { font-size: 0.95rem; color: var(--ink-soft); }
+    .seq-what code { font-size: 0.8em; }
+
+    /* —— Tabs —— */
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin: 1.2rem 0 0.8rem;
+    }
+    .tab-btn {
+      font-family: "Source Sans 3", sans-serif;
+      font-weight: 600;
+      font-size: 0.9rem;
+      padding: 0.5rem 0.9rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink-soft);
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .tab-btn:hover { border-color: var(--teal); color: var(--teal); }
+    .tab-btn.active {
+      background: var(--teal);
+      border-color: var(--teal);
+      color: #fff;
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; animation: rise 0.35s ease both; }
+
+    /* —— File map —— */
+    .files {
+      display: grid;
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+    .file-row {
+      display: grid;
+      grid-template-columns: 220px 1fr;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      align-items: baseline;
+    }
+    @media (max-width: 640px) {
+      .file-row { grid-template-columns: 1fr; }
+    }
+    .file-row .name {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.8rem;
+      color: var(--teal-deep);
+      font-weight: 500;
+    }
+    .file-row .desc { font-size: 0.92rem; color: var(--ink-soft); }
+
+    /* —— Read order —— */
+    .read-order {
+      margin: 1rem 0 0;
+      padding-left: 0;
+      list-style: none;
+      counter-reset: read;
+    }
+    .read-order li {
+      counter-increment: read;
+      display: flex;
+      gap: 0.85rem;
+      align-items: flex-start;
+      padding: 0.65rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    .read-order li::before {
+      content: counter(read);
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.75rem;
+      width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 6px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+      margin-top: 0.15rem;
+    }
+
+    footer {
+      margin-top: 4rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .toc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 0.55rem;
+      margin-top: 1rem;
+    }
+    .toc-grid a {
+      text-decoration: none;
+      padding: 0.75rem 0.9rem;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      color: var(--ink);
+      font-weight: 600;
+      font-size: 0.92rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .toc-grid a:hover {
+      border-color: var(--teal);
+      transform: translateY(-2px);
+      color: var(--teal-deep);
+    }
+    .toc-grid a small {
+      display: block;
+      font-weight: 400;
+      color: var(--muted);
+      font-size: 0.8rem;
+      margin-top: 0.2rem;
+    }
+
+    .mermaid-ish {
+      font-family: "Fragment Mono", monospace;
+      font-size: 0.72rem;
+      line-height: 1.45;
+      white-space: pre;
+      overflow-x: auto;
+      color: #b8d4c8;
+    }
+  </style>
+</head>
+<body>
+  <nav class="topnav">
+    <div class="topnav-inner">
+      <a class="brand" href="#top">Agentic<span>AI</span> Flow Lab</a>
+      <ul class="nav-links">
+        <li><a href="#big-picture">Big picture</a></li>
+        <li><a href="#stack">Stack</a></li>
+        <li><a href="#brain">LLM brain</a></li>
+        <li><a href="#react">ReAct loop</a></li>
+        <li><a href="#agents">Agents talk</a></li>
+        <li><a href="#walkthrough">Walkthrough</a></li>
+        <li><a href="#files">Files</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <div class="wrap" id="top">
+    <header class="hero">
+      <p class="hero-kicker">Local multi-agent system · educational walkthrough</p>
+      <h1>Agentic<em>AI</em> how the whole flow works</h1>
+      <p class="hero-lead">
+        A fresher-friendly map of this project: what it does, which frameworks power it,
+        how the LLM acts as a brain, and how specialist agents talk to each other — with real file names and technical detail.
+      </p>
+      <div class="hero-meta">
+        <span class="chip hot">LangChain + LangGraph</span>
+        <span class="chip">Ollama · qwen2.5:7b</span>
+        <span class="chip">Agents-as-tools</span>
+        <span class="chip">Travel calendar · .ics</span>
+      </div>
+    </header>
+
+    <!-- TOC -->
+    <section id="toc">
+      <p class="section-label">Jump in</p>
+      <h2>What you will learn</h2>
+      <div class="toc-grid">
+        <a href="#big-picture">1. Big picture<small>Concierge analogy + system purpose</small></a>
+        <a href="#stack">2. Tech stack<small>Python, LangChain, Ollama, APIs</small></a>
+        <a href="#architecture">3. Architecture<small>Orchestrator → 4 specialists</small></a>
+        <a href="#brain">4. LLM as brain<small>Why the model decides, tools fetch facts</small></a>
+        <a href="#react">5. ReAct loop<small>Reason → Act → Observe → Answer</small></a>
+        <a href="#agents">6. How agents communicate<small>Nested tool calls, not a chat bus</small></a>
+        <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
+        <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
+        <a href="#calendar">9. Travel calendar<small>.ics + Google add link / optional API</small></a>
+        <a href="#files">10. File map<small>What to read first</small></a>
+      </div>
+    </section>
+
+    <!-- BIG PICTURE -->
+    <section id="big-picture">
+      <p class="section-label">Section 01</p>
+      <h2>Big picture — start here</h2>
+      <p class="lead">
+        This project is a <strong>local travel assistant</strong>. You type a natural-language question about
+        weather, driving time, towns on a route, or restaurants. An <strong>orchestrator agent</strong>
+        decides which specialist agents to ask, and those specialists call free public APIs to get real data.
+      </p>
+
+      <div class="callout">
+        <strong>Fresher analogy:</strong> Think of a hotel concierge desk.
+        You ask one person (the orchestrator). They don’t know every detail themselves —
+        they call the weather desk, the maps desk, and the restaurants desk, then summarize everything back to you.
+      </div>
+
+      <div class="analogy">
+        <article>
+          <p class="role">You</p>
+          <h4>Guest at the desk</h4>
+          <p>Type questions in the CLI: <code>python run_agents.py</code></p>
+        </article>
+        <article>
+          <p class="role">Orchestrator</p>
+          <h4>Concierge</h4>
+          <p>Reads your request, picks specialists, combines their answers into one reply.</p>
+        </article>
+        <article>
+          <p class="role">Specialists</p>
+          <h4>Weather / Travel / Dining</h4>
+          <p>Each has tools that hit wttr.in, OSRM, Nominatim, or Overpass.</p>
+        </article>
+        <article>
+          <p class="role">LLM (Ollama)</p>
+          <h4>The brain</h4>
+          <p>Decides <em>what</em> to call and <em>how</em> to phrase the answer — not inventing map data.</p>
+        </article>
+      </div>
+
+      <h3>What you can ask</h3>
+      <ul style="margin:0.5rem 0 0 1.2rem;color:var(--ink-soft)">
+        <li>“Weather in Tokyo”</li>
+        <li>“Drive Paris to Lyon at 9:30 AM — towns and weather at arrival”</li>
+        <li>“Restaurants in intermediate towns between Boston and Portland”</li>
+        <li>Combined: travel + weather + dining in one question (best with orchestrator)</li>
+      </ul>
+    </section>
+
+    <!-- STACK -->
+    <section id="stack">
+      <p class="section-label">Section 02</p>
+      <h2>Tech stack &amp; frameworks</h2>
+      <p>
+        Everything runs on your machine. The “AI brain” is a local model via <strong>Ollama</strong>.
+        Agents are built with <strong>LangChain</strong>’s high-level <code>create_agent</code> (ReAct-style),
+        with conversation state from <strong>LangGraph</strong>’s <code>MemorySaver</code>.
+      </p>
+
+      <div class="panel" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Layer</th>
+              <th>Choice in this repo</th>
+              <th>Why it matters</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Language</td>
+              <td><code>Python 3.10+</code></td>
+              <td>All agents, tools, and CLI</td>
+            </tr>
+            <tr>
+              <td>Agent framework</td>
+              <td><code>langchain</code> → <code>create_agent</code></td>
+              <td>Builds a ReAct tool-calling graph per agent</td>
+            </tr>
+            <tr>
+              <td>Graph / memory</td>
+              <td><code>langgraph</code> → <code>MemorySaver</code></td>
+              <td>Checkpoints chat state by <code>thread_id</code></td>
+            </tr>
+            <tr>
+              <td>LLM runtime</td>
+              <td><code>langchain-ollama</code> → <code>ChatOllama</code></td>
+              <td>Talks to local Ollama HTTP API</td>
+            </tr>
+            <tr>
+              <td>Model</td>
+              <td><code>qwen2.5:7b</code> @ <code>127.0.0.1:11434</code></td>
+              <td>Hardcoded in every <code>build_agent()</code>; temperature <code>0.2</code></td>
+            </tr>
+            <tr>
+              <td>HTTP / tools</td>
+              <td><code>httpx</code></td>
+              <td>Calls wttr.in, Nominatim, OSRM, Overpass</td>
+            </tr>
+            <tr>
+              <td>Not used</td>
+              <td>CrewAI, AutoGen, LlamaIndex, OpenAI cloud, RAG / vector DB</td>
+              <td>Facts come from live APIs, not embeddings</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout warn">
+        <strong>Note:</strong> Code and module comments use <code>qwen2.5:7b</code>.
+        The README still mentions <code>qwen3.5:9b</code> — pull the tag that matches what
+        <code>ChatOllama(model=...)</code> uses in the agents.
+      </div>
+
+      <h3>Dependencies (<code>requirements.txt</code>)</h3>
+<pre><span class="tok-green">langchain</span><span class="tok-dim">&gt;=0.3.0</span>
+<span class="tok-green">langchain-core</span><span class="tok-dim">&gt;=0.3.0</span>
+<span class="tok-green">langchain-ollama</span><span class="tok-dim">&gt;=0.2.0</span>
+<span class="tok-green">langgraph</span><span class="tok-dim">&gt;=0.2.0</span>
+<span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span></pre>
+    </section>
+
+    <!-- ARCHITECTURE -->
+    <section id="architecture">
+      <p class="section-label">Section 03</p>
+      <h2>System architecture</h2>
+      <p>
+        Default entry: <code>run_agents.py</code> builds the <strong>orchestrator</strong>.
+        The orchestrator’s tools are not “plain HTTP helpers” — each tool wraps a <strong>full specialist agent graph</strong>.
+      </p>
+
+      <div class="arch">
+        <div class="arch-node user">👤 You (CLI / natural language)</div>
+        <div class="arch-arrow">↓  <code>run_agents.py</code> · default <code>--client orchestrator</code></div>
+        <div class="arch-node orch">
+          <div class="tag">orchestrator_agent.py</div>
+          <strong style="font-family:'Bricolage Grotesque',sans-serif;font-size:1.15rem;display:block;margin-top:0.2rem">Orchestrator agent</strong>
+          <p>Tools: <code>ask_weather_specialist</code> · <code>ask_travel_specialist</code> · <code>ask_restaurant_specialist</code></p>
+        </div>
+        <div class="arch-arrow">↓  agents-as-tools (nested ReAct graphs)</div>
+        <div class="specialists">
+          <div class="spec weather">
+            <h4>Weather</h4>
+            <p class="mono" style="font-size:0.75rem;color:var(--muted)">weather_agent.py</p>
+            <ul>
+              <li><code>get_weather</code></li>
+              <li>→ wttr.in</li>
+            </ul>
+          </div>
+          <div class="spec travel">
+            <h4>Travel</h4>
+            <p class="mono" style="font-size:0.75rem;color:var(--muted)">travel_agent.py</p>
+            <ul>
+              <li><code>get_travel_time</code></li>
+              <li><code>get_route_stops_with_weather</code></li>
+              <li>→ Nominatim, OSRM, wttr.in</li>
+            </ul>
+          </div>
+          <div class="spec food">
+            <h4>Restaurants</h4>
+            <p class="mono" style="font-size:0.75rem;color:var(--muted)">restaurant_agent.py</p>
+            <ul>
+              <li><code>find_places_to_eat</code></li>
+              <li><code>find_places_to_eat_along_route</code></li>
+              <li><code>find_restaurants_at_towns_on_route</code></li>
+              <li>→ Overpass, OSRM, Nominatim</li>
+            </ul>
+          </div>
+        </div>
+        <div class="arch-arrow">↓  free public HTTP APIs (no API keys)</div>
+        <div class="apis">
+          <span class="api-pill">wttr.in — weather</span>
+          <span class="api-pill">Nominatim — geocode</span>
+          <span class="api-pill">OSRM — routing</span>
+          <span class="api-pill">Overpass — OSM POIs</span>
+        </div>
+      </div>
+
+      <div class="panel dark" style="margin-top:1.4rem">
+        <p style="margin-bottom:0.6rem;font-family:'Fragment Mono',monospace;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:#7dcbab">ASCII topology</p>
+<pre class="mermaid-ish" style="margin:0;padding:0;background:transparent">User
+ │
+ ▼
+run_agents.py
+ │
+ ▼
+Orchestrator (create_agent + MemorySaver)
+ ├── ask_weather_specialist  → Weather graph  → get_weather → wttr.in
+ ├── ask_travel_specialist   → Travel graph   → OSRM / Nominatim / wttr
+ └── ask_restaurant_specialist → Restaurant graph → Overpass / OSRM / Nominatim
+
+Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
+      </div>
+    </section>
+
+    <!-- BRAIN -->
+    <section id="brain">
+      <p class="section-label">Section 04</p>
+      <h2>How the LLM is the brain</h2>
+      <p class="lead">
+        The LLM does <strong>not</strong> store live weather or restaurant databases.
+        Its job is judgment: understand the user, choose tools, interpret tool results, write a clear answer.
+      </p>
+
+      <div class="analogy">
+        <article>
+          <p class="role">Brain</p>
+          <h4>LLM (Qwen via Ollama)</h4>
+          <p>Language understanding, planning which tool to call, summarizing results.</p>
+        </article>
+        <article>
+          <p class="role">Hands</p>
+          <h4>@tool functions</h4>
+          <p>Python code that hits APIs. Deterministic. Returns text observations.</p>
+        </article>
+        <article>
+          <p class="role">Rules</p>
+          <h4>system_prompt</h4>
+          <p>“Never invent weather / venues — always use tools.” Guides behavior.</p>
+        </article>
+        <article>
+          <p class="role">Short memory</p>
+          <h4>MemorySaver</h4>
+          <p>Remembers earlier turns in this session (same <code>thread_id</code>).</p>
+        </article>
+      </div>
+
+      <h3>How every agent is built (same pattern)</h3>
+      <p>Weather, travel, restaurant, and orchestrator all follow:</p>
+<pre><span class="tok-sky">llm</span> = ChatOllama(
+    model=<span class="tok-amber">"qwen2.5:7b"</span>,
+    base_url=<span class="tok-amber">"http://127.0.0.1:11434"</span>,
+    temperature=<span class="tok-coral">0.2</span>,
+)
+<span class="tok-dim"># returns a LangGraph runnable</span>
+<span class="tok-green">return</span> create_agent(
+    llm,
+    tools=[...],          <span class="tok-dim"># @tool functions the model may call</span>
+    system_prompt=<span class="tok-amber">"..."</span>,  <span class="tok-dim"># role + guardrails</span>
+    checkpointer=MemorySaver(),
+)</pre>
+
+      <div class="callout">
+        <strong>Key idea:</strong> <code>create_agent</code> wires a ReAct-style loop for you.
+        You do <em>not</em> hand-write a custom <code>StateGraph</code> in this project —
+        LangChain’s helper builds that graph under the hood.
+      </div>
+
+      <h3>Temperature = 0.2</h3>
+      <p>
+        Low temperature → more deterministic tool choice and wording.
+        Good for routing/agent systems where weird creative guesses would be bad.
+      </p>
+    </section>
+
+    <!-- REACT -->
+    <section id="react">
+      <p class="section-label">Section 05</p>
+      <h2>One agent turn — the ReAct loop</h2>
+      <p>
+        <strong>ReAct</strong> = <em>Reason + Act</em>. The model thinks, may call a tool, reads the result (observation),
+        then thinks again — until it can answer in plain text.
+      </p>
+
+      <ol class="steps">
+        <li>
+          <div>
+            <strong>You send a question</strong>
+            <p><code>invoke_agent</code> wraps it as a <code>HumanMessage</code> and calls <code>graph.invoke(...)</code> with a <code>thread_id</code>.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>LLM reasons</strong>
+            <p>Sees system prompt + conversation. Decides: answer now, or emit one/more <em>tool_calls</em>.</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>Framework acts</strong>
+            <p>LangGraph runs the matching Python <code>@tool</code> (HTTP call or nested specialist agent).</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>Observation returns</strong>
+            <p>Tool output is appended as a message. LLM sees real data (weather lines, ETAs, venue lists).</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <strong>Final answer</strong>
+            <p>LLM writes an <code>AIMessage</code>. <code>extract_assistant_reply</code> returns that last text to the CLI.</p>
+          </div>
+        </li>
+      </ol>
+
+      <h3>The tiny “glue” file: <code>agent_common.py</code></h3>
+<pre><span class="tok-dim"># One turn</span>
+tid = thread_id <span class="tok-green">or</span> uuid.uuid4().hex
+config = {<span class="tok-amber">"configurable"</span>: {<span class="tok-amber">"thread_id"</span>: tid}}
+result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(content=q)]}, config)
+<span class="tok-green">return</span> extract_assistant_reply(result[<span class="tok-amber">"messages"</span>])</pre>
+
+      <p>
+        Interactive mode (<code>run_interactive</code>) keeps one <code>session_tid</code> so follow-ups like
+        “what about tomorrow?” still know the place. Type <code>/reset</code> to start a new thread.
+      </p>
+    </section>
+
+    <!-- AGENTS COMMUNICATE -->
+    <section id="agents">
+      <p class="section-label">Section 06</p>
+      <h2>How agents communicate</h2>
+      <p class="lead">
+        There is <strong>no message bus, no shared queue, no AutoGen group chat</strong>.
+        Communication is <strong>agents-as-tools</strong>: the orchestrator LLM calls a tool whose body
+        runs another agent to completion and returns a string.
+      </p>
+
+      <div class="panel amber">
+        <h3 style="margin-top:0">Pattern name: Supervisor / router with nested agents</h3>
+        <p style="margin-bottom:0">
+          Orchestrator builds three specialist graphs once in <code>build_agent()</code>,
+          then exposes them as <code>@tool</code>s. When the orchestrator model chooses
+          <code>ask_travel_specialist</code>, Python runs the travel ReAct graph and returns the specialist’s final text.
+        </p>
+      </div>
+
+      <h3>Real code shape (<code>orchestrator_agent.py</code>)</h3>
+<pre>weather_graph = build_weather_agent()
+travel_graph = build_travel_agent()
+restaurant_graph = build_restaurant_agent()
+
+<span class="tok-sky">@tool</span>
+<span class="tok-green">def</span> ask_weather_specialist(query: str) -> str:
+    <span class="tok-amber">"""Delegate to the weather specialist…"""</span>
+    <span class="tok-green">return</span> run_weather_query(weather_graph, query.strip())
+
+<span class="tok-dim"># same idea for travel + restaurants…</span>
+
+create_agent(llm, tools=[
+    ask_weather_specialist,
+    ask_travel_specialist,
+    ask_restaurant_specialist,
+], ...)</pre>
+
+      <h3>What the docstring does</h3>
+      <p>
+        Tool docstrings become the <strong>schema description</strong> the LLM sees.
+        They tell the orchestrator <em>when</em> to delegate (weather vs route vs dining) and
+        to pass a clear, self-contained sub-question.
+      </p>
+
+      <div class="callout">
+        <strong>Memory boundary:</strong> Specialist <code>run_query</code> calls omit <code>thread_id</code>,
+        so each delegation gets a <strong>fresh ephemeral thread</strong>.
+        Session memory lives on the <strong>orchestrator</strong> conversation, not inside nested specialist hops.
+      </div>
+
+      <h3>You can also skip the orchestrator</h3>
+      <p>
+        <code>run_agents.py --client weather|travel|restaurants</code> runs a specialist directly —
+        same brain + tools, no supervisor layer.
+      </p>
+    </section>
+
+    <!-- MEMORY -->
+    <section id="memory">
+      <p class="section-label">Section 07</p>
+      <h2>Memory (what sticks, what doesn’t)</h2>
+      <div class="panel" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Kind</th><th>Present?</th><th>How</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Short-term chat (same REPL)</td>
+              <td>Yes</td>
+              <td><code>MemorySaver</code> + stable <code>thread_id</code></td>
+            </tr>
+            <tr>
+              <td>Across process restarts</td>
+              <td>No</td>
+              <td>In-memory only; gone when Python exits</td>
+            </tr>
+            <tr>
+              <td>Specialist memory across orchestrator calls</td>
+              <td>No</td>
+              <td>New UUID per nested <code>run_query</code></td>
+            </tr>
+            <tr>
+              <td>RAG / vector memory</td>
+              <td>No</td>
+              <td>Live tools, not a document index</td>
+            </tr>
+            <tr>
+              <td>Manual reset</td>
+              <td>Yes</td>
+              <td>Type <code>/reset</code> / <code>/clear</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- WALKTHROUGH -->
+    <section id="walkthrough">
+      <p class="section-label">Section 08</p>
+      <h2>Full walkthrough — one mixed question</h2>
+      <p class="lead">
+        Example: <em>“Drive Milan to Rome at 8 AM; towns with weather; restaurants in those towns.”</em>
+      </p>
+
+      <div class="tabs" role="tablist">
+        <button class="tab-btn active" data-tab="flow-seq" type="button">Step sequence</button>
+        <button class="tab-btn" data-tab="flow-weather" type="button">Weather-only path</button>
+        <button class="tab-btn" data-tab="flow-tools" type="button">Specialist tools map</button>
+        <button class="tab-btn" data-tab="flow-apis" type="button">External APIs</button>
+      </div>
+
+      <div id="flow-seq" class="tab-panel active">
+        <div class="panel">
+          <div class="seq">
+            <div class="seq-row">
+              <div class="seq-who">1 · You</div>
+              <div class="seq-what">Run <code>python run_agents.py</code>, type the trip question at <code>&gt;</code>.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">2 · Launcher</div>
+              <div class="seq-what"><code>build_orchestrator()</code> builds orch + three specialist graphs. <code>run_interactive</code> keeps a session <code>thread_id</code>.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">3 · Orchestrator LLM</div>
+              <div class="seq-what">Reads system prompt: never invent data; rewrite into focused sub-questions; may call several tools in one turn.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">4 · Tool call</div>
+              <div class="seq-what"><code>ask_travel_specialist("Drive Milan to Rome leaving 8 AM, major towns + weather…")</code></div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">5 · Travel agent</div>
+              <div class="seq-what">Its own ReAct loop chooses <code>get_route_stops_with_weather</code> → <code>route_common</code>: geocode → OSRM polyline → sample towns → wttr timed forecast.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">6 · Tool call</div>
+              <div class="seq-what"><code>ask_restaurant_specialist("Restaurants in intermediate towns Milan→Rome…")</code></div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">7 · Restaurant agent</div>
+              <div class="seq-what">Often <code>find_restaurants_at_towns_on_route</code> → discover towns → Overpass amenity search per town.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">8 · Orchestrator</div>
+              <div class="seq-what">Gets two (or more) string observations, writes <strong>one combined natural-language answer</strong>, printed to stdout.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="flow-weather" class="tab-panel">
+        <div class="panel">
+          <p>Simplest specialist path — good first file to study:</p>
+          <div class="seq">
+            <div class="seq-row">
+              <div class="seq-who">User</div>
+              <div class="seq-what"><code>python run_agents.py -c weather "Weather in Tokyo"</code></div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">Weather LLM</div>
+              <div class="seq-what">Calls <code>get_weather("Tokyo")</code></div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">Tool</div>
+              <div class="seq-what"><code>GET https://wttr.in/Tokyo?format=j1</code> via httpx → parse current + today’s high/low</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">LLM</div>
+              <div class="seq-what">Summarizes tool text in metric units; mentions resolved area if different</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="flow-tools" class="tab-panel">
+        <div class="panel" style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>Agent</th><th>Tools</th><th>Typical use</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Weather</td>
+                <td><code>get_weather</code></td>
+                <td>Current conditions + short forecast</td>
+              </tr>
+              <tr>
+                <td>Travel</td>
+                <td><code>get_travel_time</code><br/><code>get_route_stops_with_weather</code></td>
+                <td>A→B duration; towns + ETA + weather</td>
+              </tr>
+              <tr>
+                <td>Restaurant</td>
+                <td><code>find_places_to_eat</code><br/><code>find_places_to_eat_along_route</code><br/><code>find_restaurants_at_towns_on_route</code></td>
+                <td>Near a place; corridor; town-by-town on route</td>
+              </tr>
+              <tr>
+                <td>Orchestrator</td>
+                <td><code>ask_*_specialist</code> × 3</td>
+                <td>Route / combine domains</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin-top:0.8rem;margin-bottom:0;font-size:0.92rem">
+            Shared geo helpers live in <code>route_common.py</code>:
+            <code>OsrmRoute</code>, <code>RouteStop</code>, <code>parse_start_time</code>,
+            <code>fetch_osrm_route</code>, <code>discover_intermediate_stops</code>,
+            <code>weather_summary_at_time</code>. Empty start time defaults to <strong>08:00 today</strong>.
+          </p>
+        </div>
+      </div>
+
+      <div id="flow-apis" class="tab-panel">
+        <div class="panel" style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr><th>Service</th><th>Role</th><th>Used by</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>wttr.in</td>
+                <td>Current + hourly weather JSON</td>
+                <td>Weather, travel timed forecasts</td>
+              </tr>
+              <tr>
+                <td>Nominatim (OSM)</td>
+                <td>Forward/reverse geocoding</td>
+                <td>Travel, restaurants (throttled ~1s between reverse calls)</td>
+              </tr>
+              <tr>
+                <td>OSRM</td>
+                <td>Drive / walk / bike routes &amp; ETA</td>
+                <td>Travel, restaurant route tools</td>
+              </tr>
+              <tr>
+                <td>Overpass</td>
+                <td>OpenStreetMap amenities (restaurant, cafe, …)</td>
+                <td>Restaurant agent</td>
+              </tr>
+            </tbody>
+          </table>
+          <p style="margin-top:0.8rem;margin-bottom:0;font-size:0.92rem">
+            No API keys. Identity is HTTP <code>User-Agent</code> strings. Data can be approximate; no live traffic.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CONFIG -->
+    <section id="config">
+      <p class="section-label">Section 09</p>
+      <h2>Config, entry points, running it</h2>
+      <p>Almost no env-var configuration — settings are hardcoded in agent builders.</p>
+      <div class="panel" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Setting</th><th>Value</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Ollama host</td><td><code>http://127.0.0.1:11434</code></td></tr>
+            <tr><td>Model</td><td><code>qwen2.5:7b</code></td></tr>
+            <tr><td>Temperature</td><td><code>0.2</code></td></tr>
+            <tr><td>Default departure</td><td>today 08:00 if start time omitted</td></tr>
+            <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Commands</h3>
+<pre><span class="tok-dim"># Setup</span>
+python3 -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+ollama pull qwen2.5:7b
+
+<span class="tok-dim"># Interactive orchestrator (default)</span>
+python run_agents.py
+
+<span class="tok-dim"># Specialist clients</span>
+python run_agents.py --client weather
+python run_agents.py -c travel "Drive Boston to NYC at 7 AM with towns and weather"
+python run_agents.py -c restaurants "Casual food near London Bridge"
+
+<span class="tok-dim"># Direct module entry points also work</span>
+python weather_agent.py
+python orchestrator_agent.py</pre>
+    </section>
+
+    <!-- FILES -->
+    <section id="files">
+      <p class="section-label">Section 10</p>
+      <h2>Project files — what each one does</h2>
+      <div class="files">
+        <div class="file-row">
+          <div class="name">run_agents.py</div>
+          <div class="desc">Unified launcher; client registry; default = orchestrator</div>
+        </div>
+        <div class="file-row">
+          <div class="name">agent_common.py</div>
+          <div class="desc"><code>invoke_agent</code>, <code>run_interactive</code>, <code>extract_assistant_reply</code></div>
+        </div>
+        <div class="file-row">
+          <div class="name">orchestrator_agent.py</div>
+          <div class="desc">Supervisor; agents-as-tools delegation</div>
+        </div>
+        <div class="file-row">
+          <div class="name">weather_agent.py</div>
+          <div class="desc">Smallest complete agent (1 tool) — best first read</div>
+        </div>
+        <div class="file-row">
+          <div class="name">travel_agent.py</div>
+          <div class="desc">Travel time + route towns with weather</div>
+        </div>
+        <div class="file-row">
+          <div class="name">restaurant_agent.py</div>
+          <div class="desc">Largest specialist — area / corridor / towns-on-route dining</div>
+        </div>
+        <div class="file-row">
+          <div class="name">route_common.py</div>
+          <div class="desc">Non-LLM geo/route/weather helpers shared by travel &amp; restaurants</div>
+        </div>
+        <div class="file-row">
+          <div class="name">requirements.txt</div>
+          <div class="desc">Exact Python dependency pins</div>
+        </div>
+        <div class="file-row">
+          <div class="name">README.md</div>
+          <div class="desc">Setup + example questions</div>
+        </div>
+      </div>
+
+      <h3>Suggested reading order for a fresher</h3>
+      <ol class="read-order">
+        <li><code>README.md</code> — purpose and how to run</li>
+        <li><code>run_agents.py</code> — entry + client map</li>
+        <li><code>agent_common.py</code> — one turn + session memory</li>
+        <li><code>weather_agent.py</code> — full agent pattern in ~100 lines</li>
+        <li><code>orchestrator_agent.py</code> — multi-agent delegation</li>
+        <li><code>travel_agent.py</code> then <code>route_common.py</code></li>
+        <li><code>restaurant_agent.py</code> — richest tools</li>
+      </ol>
+    </section>
+
+    <!-- CHEAT SHEET -->
+    <section id="cheatsheet">
+      <p class="section-label">Cheat sheet</p>
+      <h2>One-screen mental model</h2>
+      <div class="panel dark">
+<pre style="margin:0;background:transparent;padding:0"><span class="tok-amber">User language</span>
+   → Orchestrator LLM (brain #0) chooses specialist tools
+      → Specialist LLM (brain #1/#2/#3) chooses domain tools
+         → Python @tool + httpx → free geo/weather APIs
+      ← observation strings
+   ← one combined answer
+
+Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
+Pattern:    ReAct + agents-as-tools (supervisor)
+Not this:   CrewAI / AutoGen / RAG / cloud OpenAI keys</pre>
+      </div>
+    </section>
+
+    <footer>
+      Generated for the <strong>agentic_ai</strong> study project — open this file in any browser.
+      Source of truth is the Python modules in this folder.
+    </footer>
+  </div>
+
+  <script>
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const id = btn.getAttribute("data-tab");
+        const root = btn.closest("section");
+        root.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+        root.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+        btn.classList.add("active");
+        root.querySelector("#" + id).classList.add("active");
+      });
+    });
+  </script>
+</body>
+</html>

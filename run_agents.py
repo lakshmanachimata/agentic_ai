@@ -3,13 +3,13 @@
 Unified launcher for the multi-agent assistant.
 
 By default, starts the orchestrator client. It accepts natural-language queries
-and delegates to the weather, travel-time, and dining specialist agents as needed.
+and delegates to weather, travel-time, dining, and travel-calendar specialists.
 
 Interactive mode uses session memory (same thread) so follow-up questions keep
 context; type ``/reset`` to clear. Multiple ``-q`` flags share one session.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen3.5:4b
+  ollama pull qwen2.5:7b
 
 Examples:
   python run_agents.py
@@ -17,6 +17,7 @@ Examples:
   python run_agents.py --client weather "What is the forecast in Tokyo?"
   python run_agents.py --client travel "How long to walk from Central Park to Times Square?"
   python run_agents.py -c restaurants "Casual food near London Bridge"
+  python run_agents.py -c calendar "Create a calendar event Drive Paris to Lyon tomorrow 9 AM for 4 hours"
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from collections.abc import Callable
 from typing import Any
 
 from agent_common import invoke_agent, run_interactive
+from calendar_agent import build_agent as build_calendar
 from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
 from travel_agent import build_agent as build_travel
@@ -38,7 +40,7 @@ ClientBuilder = Callable[[], Any]
 _CLIENTS: dict[str, tuple[str, str, ClientBuilder]] = {
     "orchestrator": (
         "Orchestrator",
-        "ask about weather, travel time, dining, or combine them (routes to specialists automatically)",
+        "ask about weather, travel time, dining, calendar, or combine them (routes to specialists automatically)",
         build_orchestrator,
     ),
     "restaurants": (
@@ -55,6 +57,11 @@ _CLIENTS: dict[str, tuple[str, str, ClientBuilder]] = {
         "Travel-time specialist",
         "ask how long it takes to travel between places",
         build_travel,
+    ),
+    "calendar": (
+        "Travel calendar specialist",
+        "create .ics events and Google Calendar add links (optional API push with credentials.json)",
+        build_calendar,
     ),
 }
 

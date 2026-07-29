@@ -157,6 +157,13 @@ ENV/
 env.bak/
 venv.bak/
 
+# Calendar agent outputs + Google OAuth secrets
+calendar_events/
+credentials.json
+token.json
+client_secret*.json
+
+
 # Spyder project settings
 .spyderproject
 .spyproject
