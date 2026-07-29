@@ -643,7 +643,7 @@
         <span class="chip hot">LangChain + LangGraph</span>
         <span class="chip">Ollama · qwen2.5:7b</span>
         <span class="chip">Agents-as-tools</span>
-        <span class="chip">Travel calendar · auto-open</span>
+        <span class="chip">Calendar · OSRM ETA</span>
       </div>
     </header>
 
@@ -660,7 +660,7 @@
         <a href="#agents">6. How agents communicate<small>Nested tool calls, not a chat bus</small></a>
         <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
-        <a href="#calendar">9. Travel calendar<small>.ics + auto-open Google tab / optional API</small></a>
+        <a href="#calendar">9. Travel calendar<small>OSRM duration · tomorrow dates · auto-open</small></a>
         <a href="#files">10. File map<small>What to read first</small></a>
       </div>
     </section>
@@ -711,7 +711,7 @@
         <li>“Weather in Tokyo”</li>
         <li>“Drive Paris to Lyon at 9:30 AM — towns and weather at arrival”</li>
         <li>“Restaurants in intermediate towns between Boston and Portland”</li>
-        <li>“Create a calendar event for driving Paris to Lyon tomorrow 9 AM lasting 4 hours”</li>
+        <li>“Add Mumbai→Hyderabad tomorrow 10 AM to my calendar” (duration from OSRM, not guessed)</li>
         <li>Combined: travel + weather + dining + “add that trip to my calendar” (orchestrator)</li>
       </ul>
     </section>
@@ -768,8 +768,8 @@
             </tr>
             <tr>
               <td>Calendar</td>
-              <td><code>calendar_agent.py</code> → <code>.ics</code> + Google TEMPLATE link + <code>open</code> browser</td>
-              <td>Link is opened automatically; user clicks Save. Optional Calendar API if creds exist</td>
+              <td><code>calendar_agent.py</code> → <code>.ics</code> + OSRM duration + auto-open browser</td>
+              <td>Trip length from live routing; <code>start_time</code> must include day (tomorrow / YYYY-MM-DD)</td>
             </tr>
             <tr>
               <td>Optional Google API</td>
@@ -854,7 +854,7 @@
               <li><code>create_calendar_event</code></li>
               <li><code>create_travel_calendar</code></li>
               <li><code>list_saved_calendar_files</code></li>
-              <li>→ <code>.ics</code> + open Google tab (± API)</li>
+              <li>→ OSRM for duration + <code>.ics</code> + open tab</li>
             </ul>
           </div>
         </div>
@@ -881,7 +881,8 @@ Orchestrator (create_agent + MemorySaver)
  ├── ask_weather_specialist   → Weather graph    → get_weather → wttr.in
  ├── ask_travel_specialist    → Travel graph     → OSRM / Nominatim / wttr
  ├── ask_restaurant_specialist → Restaurant graph → Overpass / OSRM / Nominatim
- └── ask_calendar_specialist  → Calendar graph   → .ics file + Google add link
+ └── ask_calendar_specialist  → Calendar graph   → OSRM duration (road trips)
+                                                 → .ics + Google add link
                                                  → open URL in browser (user clicks Save)
                                                  (± optional Calendar API)
 
@@ -1152,7 +1153,7 @@ create_agent(llm, tools=[
             </div>
             <div class="seq-row">
               <div class="seq-who">8 · (optional) Calendar</div>
-              <div class="seq-what">If you also ask “add this trip to my calendar” → <code>ask_calendar_specialist</code> writes an <code>.ics</code>, builds a Google add link, and <strong>opens it in the browser</strong> for you to Save.</div>
+              <div class="seq-what">If you also ask “add this trip to my calendar” → <code>ask_calendar_specialist</code> runs <code>create_travel_calendar</code> with <code>start_time</code> including <strong>tomorrow</strong>, looks up <strong>OSRM duration</strong> (not a guessed 4h/6h), writes <code>.ics</code>, and <strong>opens Google Calendar</strong> for Save.</div>
             </div>
             <div class="seq-row">
               <div class="seq-who">9 · Orchestrator</div>
@@ -1211,7 +1212,7 @@ create_agent(llm, tools=[
               <tr>
                 <td>Calendar</td>
                 <td><code>create_calendar_event</code><br/><code>create_travel_calendar</code><br/><code>list_saved_calendar_files</code></td>
-                <td>Single event or trip → <code>.ics</code> + auto-open Google tab (± API)</td>
+                <td>Single event or road trip → OSRM sets trip length; required day+time; auto-open Google tab</td>
               </tr>
               <tr>
                 <td>Orchestrator</td>
@@ -1257,6 +1258,11 @@ create_agent(llm, tools=[
                 <td>Restaurant agent</td>
               </tr>
               <tr>
+                <td>OSRM (also via calendar)</td>
+                <td>Authoritative trip duration for <code>create_travel_calendar</code></td>
+                <td>Calendar agent (road trips) — avoids inventing 4h/6h</td>
+              </tr>
+              <tr>
                 <td>Local <code>.ics</code> + Google TEMPLATE URL</td>
                 <td>Calendar files + quick-add link; browser opened via <code>open</code> (macOS) / <code>webbrowser</code></td>
                 <td>Calendar agent (always)</td>
@@ -1280,77 +1286,80 @@ create_agent(llm, tools=[
       <p class="section-label">Section 09</p>
       <h2>Travel calendar agent</h2>
       <p class="lead">
-        <code>calendar_agent.py</code> turns “add this trip to my calendar” into an <code>.ics</code> file,
-        a Google Calendar TEMPLATE link, and <strong>opens that link in your browser</strong>
-        so you can click <strong>Save</strong> manually — no OAuth required for this path.
+        <code>calendar_agent.py</code> turns “add this trip to my calendar” into an accurate event:
+        <strong>start day+time from the user</strong>, <strong>end time from live OSRM routing</strong>
+        (not a guessed 4h/6h), then writes <code>.ics</code>, builds a Google TEMPLATE link, and
+        <strong>opens the browser</strong> so you click Save.
       </p>
+
+      <div class="callout warn">
+        <strong>Bug that was fixed:</strong> Orchestrator sometimes invented “10 AM–4 PM (6 hours)”
+        while travel reported ~8h 47m, and defaulted start to <em>today 08:00</em> instead of
+        <em>tomorrow 10:00</em>. Road-trip calendars now require an explicit day in
+        <code>start_time</code> and take duration from OSRM.
+      </div>
 
       <div class="analogy">
         <article>
-          <p class="role">Always</p>
-          <h4>.ics file</h4>
-          <p>Written under <code>calendar_events/</code>. Import via Google Calendar → Settings → Import.</p>
+          <p class="role">Required</p>
+          <h4>start_time with day</h4>
+          <p>e.g. <code>tomorrow 10:00 AM</code> or <code>2026-07-30 10:00</code>. Empty / “10 AM” alone is rejected.</p>
+        </article>
+        <article>
+          <p class="role">Authoritative</p>
+          <h4>OSRM duration</h4>
+          <p><code>create_travel_calendar</code> looks up the route; e.g. Mumbai→Hyderabad ≈ 8h 47m → 10:00–18:47.</p>
         </article>
         <article>
           <p class="role">Always</p>
-          <h4>Quick-add link</h4>
-          <p>Prefills Google Calendar’s create form (<code>action=TEMPLATE</code>).</p>
-        </article>
-        <article>
-          <p class="role">Always (new)</p>
-          <h4>Auto-open browser</h4>
-          <p>On macOS runs <code>open &lt;url&gt;</code>; elsewhere uses <code>webbrowser.open</code>. You click Save.</p>
+          <h4>.ics + auto-open</h4>
+          <p>File under <code>calendar_events/</code>; macOS <code>open &lt;url&gt;</code> opens Google add form.</p>
         </article>
         <article>
           <p class="role">Optional</p>
           <h4>Calendar API</h4>
-          <p>If <code>credentials.json</code> + Google packages exist, also inserts into your primary calendar.</p>
+          <p>If <code>credentials.json</code> exists, also inserts into primary calendar.</p>
         </article>
       </div>
 
-      <h3>Example flow</h3>
+      <h3>Example flow (plan trip + calendar)</h3>
       <div class="panel">
         <div class="seq">
           <div class="seq-row">
             <div class="seq-who">You</div>
-            <div class="seq-what"><code>python run_agents.py -c calendar "Drive Paris to Lyon tomorrow 9 AM for 4 hours — add to calendar"</code></div>
+            <div class="seq-what"><code>plan trip from mumbai to hyderabad by road tomorrow 10 AM and add it to calendar</code></div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Calendar LLM</div>
-            <div class="seq-what">Calls <code>create_travel_calendar(origin="Paris", destination="Lyon", start_time="tomorrow 9 AM", duration="4 hours")</code></div>
+            <div class="seq-who">Orchestrator</div>
+            <div class="seq-what">Calls travel specialist, then calendar with origin/destination and <code>tomorrow 10:00 AM</code> — does not invent duration.</div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Tool</div>
-            <div class="seq-what">Builds iCalendar VEVENT → saves <code>calendar_events/….ics</code> → builds Google TEMPLATE URL → <code>_open_calendar_url</code> → <code>open &lt;url&gt;</code> on macOS</div>
+            <div class="seq-who">Calendar tool</div>
+            <div class="seq-what"><code>create_travel_calendar(..., start_time="tomorrow 10 AM", duration="")</code> → <code>_osrm_duration_seconds</code> → ~527 min</div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Browser</div>
-            <div class="seq-what">Google Calendar “Add event” page opens prefilled — you click <strong>Save</strong></div>
-          </div>
-          <div class="seq-row">
-            <div class="seq-who">CLI reply</div>
-            <div class="seq-what">Reports .ics path, link, and “Browser: opened Google Calendar add-event page…”</div>
+            <div class="seq-who">Result</div>
+            <div class="seq-what">Local window e.g. <strong>tomorrow 10:00 → 18:47</strong> · <code>.ics</code> written · browser opens · you click Save</div>
           </div>
         </div>
       </div>
 
-      <div class="callout">
-        <strong>Code:</strong> <code>_open_calendar_url()</code> in <code>calendar_agent.py</code> —
-        <code>subprocess.run(["open", url])</code> on Darwin; <code>webbrowser.open</code> elsewhere.
-        Called from <code>_create_event_bundle</code> right after the TEMPLATE URL is built.
-      </div>
+      <h3>Key helpers in code</h3>
+<pre><span class="tok-sky">_parse_event_start</span>(<span class="tok-amber">"tomorrow 10 AM"</span>)   <span class="tok-dim"># today/tomorrow / YYYY-MM-DD</span>
+<span class="tok-sky">_parse_duration_minutes</span>(<span class="tok-amber">"8 hours 47 minutes"</span>)  <span class="tok-dim"># fallback only</span>
+<span class="tok-sky">_osrm_duration_seconds</span>(origin, dest, mode)  <span class="tok-dim"># live route length</span>
+<span class="tok-sky">_open_calendar_url</span>(gcal_url)              <span class="tok-dim"># open / webbrowser</span></pre>
 
       <div class="callout">
-        <strong>Orchestrator tip:</strong> After travel results, say
-        <em>“add that trip to my calendar”</em> — the orchestrator delegates to
-        <code>ask_calendar_specialist</code>; the browser tab still opens the same way.
+        <strong>Orchestrator rule:</strong> For “plan trip + calendar”, call travel first, then calendar
+        with the same places and the user’s day+time. Restate the <em>tool’s</em> start/end in the
+        final answer — never a guessed shorter window.
       </div>
 
       <h3>Optional API setup</h3>
 <pre><span class="tok-dim"># Only if you want direct push (not required — browser Save works without this)</span>
 pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
-<span class="tok-dim"># Place OAuth desktop client JSON as credentials.json in the project folder</span>
-<span class="tok-dim"># First create-event run opens a browser; token.json is saved</span></pre>
+<span class="tok-dim"># Place OAuth desktop client JSON as credentials.json in the project folder</span></pre>
     </section>
 
     <!-- CONFIG -->
@@ -1370,6 +1379,8 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
             <tr><td>Default departure</td><td>today 08:00 if start time omitted</td></tr>
             <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
             <tr><td>Calendar output dir</td><td><code>calendar_events/</code></td></tr>
+            <tr><td>Calendar trip duration</td><td>OSRM via <code>_osrm_duration_seconds</code> (not LLM guess)</td></tr>
+            <tr><td>Calendar start_time</td><td>Required; must include day (<code>tomorrow</code> / <code>YYYY-MM-DD</code>)</td></tr>
             <tr><td>Calendar browser open</td><td>macOS <code>open &lt;url&gt;</code> via <code>_open_calendar_url</code></td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
@@ -1389,7 +1400,7 @@ python run_agents.py
 python run_agents.py --client weather
 python run_agents.py -c travel "Drive Boston to NYC at 7 AM with towns and weather"
 python run_agents.py -c restaurants "Casual food near London Bridge"
-python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomorrow 9 AM for 4 hours"
+python run_agents.py -c calendar "Add Mumbai to Hyderabad tomorrow 10 AM to calendar"
 
 <span class="tok-dim"># Direct module entry points also work</span>
 python weather_agent.py
@@ -1428,7 +1439,7 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">calendar_agent.py</div>
-          <div class="desc">Travel calendar — <code>.ics</code> + Google link + auto-open browser (± optional API)</div>
+          <div class="desc">Travel calendar — OSRM duration + day-aware start + <code>.ics</code> + auto-open (± API)</div>
         </div>
         <div class="file-row">
           <div class="name">route_common.py</div>
@@ -1455,7 +1466,7 @@ python orchestrator_agent.py</pre>
         <li><code>agent_common.py</code> — one turn + session memory</li>
         <li><code>weather_agent.py</code> — full agent pattern in ~100 lines</li>
         <li><code>orchestrator_agent.py</code> — multi-agent delegation (4 specialists)</li>
-        <li><code>calendar_agent.py</code> — <code>.ics</code> + auto-open Google Save tab</li>
+        <li><code>calendar_agent.py</code> — OSRM duration, required tomorrow/date, auto-open Save tab</li>
         <li><code>travel_agent.py</code> then <code>route_common.py</code></li>
         <li><code>restaurant_agent.py</code> — richest tools</li>
       </ol>
@@ -1470,7 +1481,7 @@ python orchestrator_agent.py</pre>
    → Orchestrator LLM (brain #0) chooses specialist tools
       → Specialist LLM (brain #1–#4) chooses domain tools
          → Python @tool + httpx → free geo/weather APIs
-         → or calendar tools → .ics + Google TEMPLATE URL → open in browser (Save)
+         → or calendar tools → OSRM duration + .ics + Google URL → open browser (Save)
                               (± optional Calendar API)
       ← observation strings
    ← one combined answer
