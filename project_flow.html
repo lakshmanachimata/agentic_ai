@@ -625,6 +625,7 @@
         <li><a href="#react">ReAct loop</a></li>
         <li><a href="#agents">Agents talk</a></li>
         <li><a href="#walkthrough">Walkthrough</a></li>
+        <li><a href="#calendar">Calendar</a></li>
         <li><a href="#files">Files</a></li>
       </ul>
     </div>
@@ -642,7 +643,7 @@
         <span class="chip hot">LangChain + LangGraph</span>
         <span class="chip">Ollama · qwen2.5:7b</span>
         <span class="chip">Agents-as-tools</span>
-        <span class="chip">Travel calendar · .ics</span>
+        <span class="chip">Travel calendar · auto-open</span>
       </div>
     </header>
 
@@ -659,7 +660,7 @@
         <a href="#agents">6. How agents communicate<small>Nested tool calls, not a chat bus</small></a>
         <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
-        <a href="#calendar">9. Travel calendar<small>.ics + Google add link / optional API</small></a>
+        <a href="#calendar">9. Travel calendar<small>.ics + auto-open Google tab / optional API</small></a>
         <a href="#files">10. File map<small>What to read first</small></a>
       </div>
     </section>
@@ -670,14 +671,16 @@
       <h2>Big picture — start here</h2>
       <p class="lead">
         This project is a <strong>local travel assistant</strong>. You type a natural-language question about
-        weather, driving time, towns on a route, or restaurants. An <strong>orchestrator agent</strong>
-        decides which specialist agents to ask, and those specialists call free public APIs to get real data.
+        weather, driving time, towns on a route, restaurants, or <strong>putting a trip on your calendar</strong>.
+        An <strong>orchestrator agent</strong> decides which specialist agents to ask; specialists call free
+        public APIs (or write calendar files) for real data.
       </p>
 
       <div class="callout">
         <strong>Fresher analogy:</strong> Think of a hotel concierge desk.
         You ask one person (the orchestrator). They don’t know every detail themselves —
-        they call the weather desk, the maps desk, and the restaurants desk, then summarize everything back to you.
+        they call the weather desk, the maps desk, the restaurants desk, and the
+        <em>calendar desk</em>, then summarize everything back to you.
       </div>
 
       <div class="analogy">
@@ -693,13 +696,13 @@
         </article>
         <article>
           <p class="role">Specialists</p>
-          <h4>Weather / Travel / Dining</h4>
-          <p>Each has tools that hit wttr.in, OSRM, Nominatim, or Overpass.</p>
+          <h4>Weather / Travel / Dining / Calendar</h4>
+          <p>Tools hit wttr.in, OSRM, Nominatim, Overpass — or write <code>.ics</code> files for Google Calendar.</p>
         </article>
         <article>
           <p class="role">LLM (Ollama)</p>
           <h4>The brain</h4>
-          <p>Decides <em>what</em> to call and <em>how</em> to phrase the answer — not inventing map data.</p>
+          <p>Decides <em>what</em> to call and <em>how</em> to phrase the answer — not inventing map or venue data.</p>
         </article>
       </div>
 
@@ -708,7 +711,8 @@
         <li>“Weather in Tokyo”</li>
         <li>“Drive Paris to Lyon at 9:30 AM — towns and weather at arrival”</li>
         <li>“Restaurants in intermediate towns between Boston and Portland”</li>
-        <li>Combined: travel + weather + dining in one question (best with orchestrator)</li>
+        <li>“Create a calendar event for driving Paris to Lyon tomorrow 9 AM lasting 4 hours”</li>
+        <li>Combined: travel + weather + dining + “add that trip to my calendar” (orchestrator)</li>
       </ul>
     </section>
 
@@ -763,18 +767,27 @@
               <td>Calls wttr.in, Nominatim, OSRM, Overpass</td>
             </tr>
             <tr>
+              <td>Calendar</td>
+              <td><code>calendar_agent.py</code> → <code>.ics</code> + Google TEMPLATE link + <code>open</code> browser</td>
+              <td>Link is opened automatically; user clicks Save. Optional Calendar API if creds exist</td>
+            </tr>
+            <tr>
+              <td>Optional Google API</td>
+              <td><code>google-api-python-client</code> + <code>credentials.json</code></td>
+              <td>Not required — commented in <code>requirements.txt</code></td>
+            </tr>
+            <tr>
               <td>Not used</td>
               <td>CrewAI, AutoGen, LlamaIndex, OpenAI cloud, RAG / vector DB</td>
-              <td>Facts come from live APIs, not embeddings</td>
+              <td>Facts come from live APIs / files, not embeddings</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="callout warn">
-        <strong>Note:</strong> Code and module comments use <code>qwen2.5:7b</code>.
-        The README still mentions <code>qwen3.5:9b</code> — pull the tag that matches what
-        <code>ChatOllama(model=...)</code> uses in the agents.
+      <div class="callout">
+        <strong>Model:</strong> All agents use <code>qwen2.5:7b</code> via Ollama.
+        Pull with <code>ollama pull qwen2.5:7b</code>.
       </div>
 
       <h3>Dependencies (<code>requirements.txt</code>)</h3>
@@ -782,7 +795,10 @@
 <span class="tok-green">langchain-core</span><span class="tok-dim">&gt;=0.3.0</span>
 <span class="tok-green">langchain-ollama</span><span class="tok-dim">&gt;=0.2.0</span>
 <span class="tok-green">langgraph</span><span class="tok-dim">&gt;=0.2.0</span>
-<span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span></pre>
+<span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span>
+
+<span class="tok-dim"># Optional Google Calendar API push:</span>
+<span class="tok-dim"># google-api-python-client / google-auth-oauthlib / google-auth-httplib2</span></pre>
     </section>
 
     <!-- ARCHITECTURE -->
@@ -800,7 +816,7 @@
         <div class="arch-node orch">
           <div class="tag">orchestrator_agent.py</div>
           <strong style="font-family:'Bricolage Grotesque',sans-serif;font-size:1.15rem;display:block;margin-top:0.2rem">Orchestrator agent</strong>
-          <p>Tools: <code>ask_weather_specialist</code> · <code>ask_travel_specialist</code> · <code>ask_restaurant_specialist</code></p>
+          <p>Tools: <code>ask_weather_specialist</code> · <code>ask_travel_specialist</code> · <code>ask_restaurant_specialist</code> · <code>ask_calendar_specialist</code></p>
         </div>
         <div class="arch-arrow">↓  agents-as-tools (nested ReAct graphs)</div>
         <div class="specialists">
@@ -831,13 +847,25 @@
               <li>→ Overpass, OSRM, Nominatim</li>
             </ul>
           </div>
+          <div class="spec calendar">
+            <h4>Calendar</h4>
+            <p class="mono" style="font-size:0.75rem;color:var(--muted)">calendar_agent.py</p>
+            <ul>
+              <li><code>create_calendar_event</code></li>
+              <li><code>create_travel_calendar</code></li>
+              <li><code>list_saved_calendar_files</code></li>
+              <li>→ <code>.ics</code> + open Google tab (± API)</li>
+            </ul>
+          </div>
         </div>
-        <div class="arch-arrow">↓  free public HTTP APIs (no API keys)</div>
+        <div class="arch-arrow">↓  free public HTTP APIs · local calendar files</div>
         <div class="apis">
           <span class="api-pill">wttr.in — weather</span>
           <span class="api-pill">Nominatim — geocode</span>
           <span class="api-pill">OSRM — routing</span>
           <span class="api-pill">Overpass — OSM POIs</span>
+          <span class="api-pill">calendar_events/*.ics</span>
+          <span class="api-pill">Google TEMPLATE URL + open</span>
         </div>
       </div>
 
@@ -850,9 +878,12 @@ run_agents.py
  │
  ▼
 Orchestrator (create_agent + MemorySaver)
- ├── ask_weather_specialist  → Weather graph  → get_weather → wttr.in
- ├── ask_travel_specialist   → Travel graph   → OSRM / Nominatim / wttr
- └── ask_restaurant_specialist → Restaurant graph → Overpass / OSRM / Nominatim
+ ├── ask_weather_specialist   → Weather graph    → get_weather → wttr.in
+ ├── ask_travel_specialist    → Travel graph     → OSRM / Nominatim / wttr
+ ├── ask_restaurant_specialist → Restaurant graph → Overpass / OSRM / Nominatim
+ └── ask_calendar_specialist  → Calendar graph   → .ics file + Google add link
+                                                 → open URL in browser (user clicks Save)
+                                                 (± optional Calendar API)
 
 Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
       </div>
@@ -881,7 +912,7 @@ Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
         <article>
           <p class="role">Rules</p>
           <h4>system_prompt</h4>
-          <p>“Never invent weather / venues — always use tools.” Guides behavior.</p>
+          <p>“Never invent weather / venues / calendar paths — always use tools.” Guides behavior.</p>
         </article>
         <article>
           <p class="role">Short memory</p>
@@ -891,7 +922,7 @@ Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
       </div>
 
       <h3>How every agent is built (same pattern)</h3>
-      <p>Weather, travel, restaurant, and orchestrator all follow:</p>
+      <p>Weather, travel, restaurant, calendar, and orchestrator all follow:</p>
 <pre><span class="tok-sky">llm</span> = ChatOllama(
     model=<span class="tok-amber">"qwen2.5:7b"</span>,
     base_url=<span class="tok-amber">"http://127.0.0.1:11434"</span>,
@@ -949,7 +980,7 @@ Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
         <li>
           <div>
             <strong>Observation returns</strong>
-            <p>Tool output is appended as a message. LLM sees real data (weather lines, ETAs, venue lists).</p>
+            <p>Tool output is appended as a message. LLM sees real data (weather lines, ETAs, venue lists, <code>.ics</code> paths).</p>
           </div>
         </li>
         <li>
@@ -986,9 +1017,10 @@ result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(
       <div class="panel amber">
         <h3 style="margin-top:0">Pattern name: Supervisor / router with nested agents</h3>
         <p style="margin-bottom:0">
-          Orchestrator builds three specialist graphs once in <code>build_agent()</code>,
+          Orchestrator builds <strong>four</strong> specialist graphs once in <code>build_agent()</code>,
           then exposes them as <code>@tool</code>s. When the orchestrator model chooses
-          <code>ask_travel_specialist</code>, Python runs the travel ReAct graph and returns the specialist’s final text.
+          <code>ask_travel_specialist</code> or <code>ask_calendar_specialist</code>, Python runs that
+          specialist’s ReAct graph and returns the final text.
         </p>
       </div>
 
@@ -996,25 +1028,27 @@ result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(
 <pre>weather_graph = build_weather_agent()
 travel_graph = build_travel_agent()
 restaurant_graph = build_restaurant_agent()
+calendar_graph = build_calendar_agent()
 
 <span class="tok-sky">@tool</span>
-<span class="tok-green">def</span> ask_weather_specialist(query: str) -> str:
-    <span class="tok-amber">"""Delegate to the weather specialist…"""</span>
-    <span class="tok-green">return</span> run_weather_query(weather_graph, query.strip())
+<span class="tok-green">def</span> ask_calendar_specialist(query: str) -> str:
+    <span class="tok-amber">"""Delegate to the travel-calendar specialist…"""</span>
+    <span class="tok-green">return</span> run_calendar_query(calendar_graph, query.strip())
 
-<span class="tok-dim"># same idea for travel + restaurants…</span>
+<span class="tok-dim"># same idea for weather + travel + restaurants…</span>
 
 create_agent(llm, tools=[
     ask_weather_specialist,
     ask_travel_specialist,
     ask_restaurant_specialist,
+    ask_calendar_specialist,
 ], ...)</pre>
 
       <h3>What the docstring does</h3>
       <p>
         Tool docstrings become the <strong>schema description</strong> the LLM sees.
-        They tell the orchestrator <em>when</em> to delegate (weather vs route vs dining) and
-        to pass a clear, self-contained sub-question.
+        They tell the orchestrator <em>when</em> to delegate (weather vs route vs dining vs calendar)
+        and to pass a clear, self-contained sub-question.
       </p>
 
       <div class="callout">
@@ -1025,7 +1059,7 @@ create_agent(llm, tools=[
 
       <h3>You can also skip the orchestrator</h3>
       <p>
-        <code>run_agents.py --client weather|travel|restaurants</code> runs a specialist directly —
+        <code>run_agents.py --client weather|travel|restaurants|calendar</code> runs a specialist directly —
         same brain + tools, no supervisor layer.
       </p>
     </section>
@@ -1094,7 +1128,7 @@ create_agent(llm, tools=[
             </div>
             <div class="seq-row">
               <div class="seq-who">2 · Launcher</div>
-              <div class="seq-what"><code>build_orchestrator()</code> builds orch + three specialist graphs. <code>run_interactive</code> keeps a session <code>thread_id</code>.</div>
+              <div class="seq-what"><code>build_orchestrator()</code> builds orch + <strong>four</strong> specialist graphs. <code>run_interactive</code> keeps a session <code>thread_id</code>.</div>
             </div>
             <div class="seq-row">
               <div class="seq-who">3 · Orchestrator LLM</div>
@@ -1117,8 +1151,12 @@ create_agent(llm, tools=[
               <div class="seq-what">Often <code>find_restaurants_at_towns_on_route</code> → discover towns → Overpass amenity search per town.</div>
             </div>
             <div class="seq-row">
-              <div class="seq-who">8 · Orchestrator</div>
-              <div class="seq-what">Gets two (or more) string observations, writes <strong>one combined natural-language answer</strong>, printed to stdout.</div>
+              <div class="seq-who">8 · (optional) Calendar</div>
+              <div class="seq-what">If you also ask “add this trip to my calendar” → <code>ask_calendar_specialist</code> writes an <code>.ics</code>, builds a Google add link, and <strong>opens it in the browser</strong> for you to Save.</div>
+            </div>
+            <div class="seq-row">
+              <div class="seq-who">9 · Orchestrator</div>
+              <div class="seq-what">Gets observations, writes <strong>one combined natural-language answer</strong>, printed to stdout.</div>
             </div>
           </div>
         </div>
@@ -1171,8 +1209,13 @@ create_agent(llm, tools=[
                 <td>Near a place; corridor; town-by-town on route</td>
               </tr>
               <tr>
+                <td>Calendar</td>
+                <td><code>create_calendar_event</code><br/><code>create_travel_calendar</code><br/><code>list_saved_calendar_files</code></td>
+                <td>Single event or trip → <code>.ics</code> + auto-open Google tab (± API)</td>
+              </tr>
+              <tr>
                 <td>Orchestrator</td>
-                <td><code>ask_*_specialist</code> × 3</td>
+                <td><code>ask_*_specialist</code> × 4</td>
                 <td>Route / combine domains</td>
               </tr>
             </tbody>
@@ -1213,18 +1256,106 @@ create_agent(llm, tools=[
                 <td>OpenStreetMap amenities (restaurant, cafe, …)</td>
                 <td>Restaurant agent</td>
               </tr>
+              <tr>
+                <td>Local <code>.ics</code> + Google TEMPLATE URL</td>
+                <td>Calendar files + quick-add link; browser opened via <code>open</code> (macOS) / <code>webbrowser</code></td>
+                <td>Calendar agent (always)</td>
+              </tr>
+              <tr>
+                <td>Google Calendar API (optional)</td>
+                <td>Insert event into primary calendar</td>
+                <td>Calendar agent when <code>credentials.json</code> / <code>token.json</code> exist</td>
+              </tr>
             </tbody>
           </table>
           <p style="margin-top:0.8rem;margin-bottom:0;font-size:0.92rem">
-            No API keys. Identity is HTTP <code>User-Agent</code> strings. Data can be approximate; no live traffic.
+            Map/weather APIs need no keys. Calendar files always work; API push is optional.
           </p>
         </div>
       </div>
     </section>
 
+    <!-- CALENDAR -->
+    <section id="calendar">
+      <p class="section-label">Section 09</p>
+      <h2>Travel calendar agent</h2>
+      <p class="lead">
+        <code>calendar_agent.py</code> turns “add this trip to my calendar” into an <code>.ics</code> file,
+        a Google Calendar TEMPLATE link, and <strong>opens that link in your browser</strong>
+        so you can click <strong>Save</strong> manually — no OAuth required for this path.
+      </p>
+
+      <div class="analogy">
+        <article>
+          <p class="role">Always</p>
+          <h4>.ics file</h4>
+          <p>Written under <code>calendar_events/</code>. Import via Google Calendar → Settings → Import.</p>
+        </article>
+        <article>
+          <p class="role">Always</p>
+          <h4>Quick-add link</h4>
+          <p>Prefills Google Calendar’s create form (<code>action=TEMPLATE</code>).</p>
+        </article>
+        <article>
+          <p class="role">Always (new)</p>
+          <h4>Auto-open browser</h4>
+          <p>On macOS runs <code>open &lt;url&gt;</code>; elsewhere uses <code>webbrowser.open</code>. You click Save.</p>
+        </article>
+        <article>
+          <p class="role">Optional</p>
+          <h4>Calendar API</h4>
+          <p>If <code>credentials.json</code> + Google packages exist, also inserts into your primary calendar.</p>
+        </article>
+      </div>
+
+      <h3>Example flow</h3>
+      <div class="panel">
+        <div class="seq">
+          <div class="seq-row">
+            <div class="seq-who">You</div>
+            <div class="seq-what"><code>python run_agents.py -c calendar "Drive Paris to Lyon tomorrow 9 AM for 4 hours — add to calendar"</code></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">Calendar LLM</div>
+            <div class="seq-what">Calls <code>create_travel_calendar(origin="Paris", destination="Lyon", start_time="tomorrow 9 AM", duration="4 hours")</code></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">Tool</div>
+            <div class="seq-what">Builds iCalendar VEVENT → saves <code>calendar_events/….ics</code> → builds Google TEMPLATE URL → <code>_open_calendar_url</code> → <code>open &lt;url&gt;</code> on macOS</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">Browser</div>
+            <div class="seq-what">Google Calendar “Add event” page opens prefilled — you click <strong>Save</strong></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">CLI reply</div>
+            <div class="seq-what">Reports .ics path, link, and “Browser: opened Google Calendar add-event page…”</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout">
+        <strong>Code:</strong> <code>_open_calendar_url()</code> in <code>calendar_agent.py</code> —
+        <code>subprocess.run(["open", url])</code> on Darwin; <code>webbrowser.open</code> elsewhere.
+        Called from <code>_create_event_bundle</code> right after the TEMPLATE URL is built.
+      </div>
+
+      <div class="callout">
+        <strong>Orchestrator tip:</strong> After travel results, say
+        <em>“add that trip to my calendar”</em> — the orchestrator delegates to
+        <code>ask_calendar_specialist</code>; the browser tab still opens the same way.
+      </div>
+
+      <h3>Optional API setup</h3>
+<pre><span class="tok-dim"># Only if you want direct push (not required — browser Save works without this)</span>
+pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
+<span class="tok-dim"># Place OAuth desktop client JSON as credentials.json in the project folder</span>
+<span class="tok-dim"># First create-event run opens a browser; token.json is saved</span></pre>
+    </section>
+
     <!-- CONFIG -->
     <section id="config">
-      <p class="section-label">Section 09</p>
+      <p class="section-label">Section 10</p>
       <h2>Config, entry points, running it</h2>
       <p>Almost no env-var configuration — settings are hardcoded in agent builders.</p>
       <div class="panel" style="overflow-x:auto">
@@ -1238,6 +1369,9 @@ create_agent(llm, tools=[
             <tr><td>Temperature</td><td><code>0.2</code></td></tr>
             <tr><td>Default departure</td><td>today 08:00 if start time omitted</td></tr>
             <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
+            <tr><td>Calendar output dir</td><td><code>calendar_events/</code></td></tr>
+            <tr><td>Calendar browser open</td><td>macOS <code>open &lt;url&gt;</code> via <code>_open_calendar_url</code></td></tr>
+            <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
         </table>
       </div>
@@ -1255,20 +1389,22 @@ python run_agents.py
 python run_agents.py --client weather
 python run_agents.py -c travel "Drive Boston to NYC at 7 AM with towns and weather"
 python run_agents.py -c restaurants "Casual food near London Bridge"
+python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomorrow 9 AM for 4 hours"
 
 <span class="tok-dim"># Direct module entry points also work</span>
 python weather_agent.py
+python calendar_agent.py
 python orchestrator_agent.py</pre>
     </section>
 
     <!-- FILES -->
     <section id="files">
-      <p class="section-label">Section 10</p>
+      <p class="section-label">Section 11</p>
       <h2>Project files — what each one does</h2>
       <div class="files">
         <div class="file-row">
           <div class="name">run_agents.py</div>
-          <div class="desc">Unified launcher; client registry; default = orchestrator</div>
+          <div class="desc">Unified launcher; client registry (includes <code>calendar</code>); default = orchestrator</div>
         </div>
         <div class="file-row">
           <div class="name">agent_common.py</div>
@@ -1276,7 +1412,7 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">orchestrator_agent.py</div>
-          <div class="desc">Supervisor; agents-as-tools delegation</div>
+          <div class="desc">Supervisor; 4 specialists as tools (weather, travel, dining, calendar)</div>
         </div>
         <div class="file-row">
           <div class="name">weather_agent.py</div>
@@ -1291,12 +1427,20 @@ python orchestrator_agent.py</pre>
           <div class="desc">Largest specialist — area / corridor / towns-on-route dining</div>
         </div>
         <div class="file-row">
+          <div class="name">calendar_agent.py</div>
+          <div class="desc">Travel calendar — <code>.ics</code> + Google link + auto-open browser (± optional API)</div>
+        </div>
+        <div class="file-row">
           <div class="name">route_common.py</div>
-          <div class="desc">Non-LLM geo/route/weather helpers shared by travel &amp; restaurants</div>
+          <div class="desc">Non-LLM geo/route/weather helpers; also used for parsing start times</div>
+        </div>
+        <div class="file-row">
+          <div class="name">calendar_events/</div>
+          <div class="desc">Generated <code>.ics</code> files (gitignored)</div>
         </div>
         <div class="file-row">
           <div class="name">requirements.txt</div>
-          <div class="desc">Exact Python dependency pins</div>
+          <div class="desc">Core pins + commented optional Google Calendar packages</div>
         </div>
         <div class="file-row">
           <div class="name">README.md</div>
@@ -1310,7 +1454,8 @@ python orchestrator_agent.py</pre>
         <li><code>run_agents.py</code> — entry + client map</li>
         <li><code>agent_common.py</code> — one turn + session memory</li>
         <li><code>weather_agent.py</code> — full agent pattern in ~100 lines</li>
-        <li><code>orchestrator_agent.py</code> — multi-agent delegation</li>
+        <li><code>orchestrator_agent.py</code> — multi-agent delegation (4 specialists)</li>
+        <li><code>calendar_agent.py</code> — <code>.ics</code> + auto-open Google Save tab</li>
         <li><code>travel_agent.py</code> then <code>route_common.py</code></li>
         <li><code>restaurant_agent.py</code> — richest tools</li>
       </ol>
@@ -1323,14 +1468,17 @@ python orchestrator_agent.py</pre>
       <div class="panel dark">
 <pre style="margin:0;background:transparent;padding:0"><span class="tok-amber">User language</span>
    → Orchestrator LLM (brain #0) chooses specialist tools
-      → Specialist LLM (brain #1/#2/#3) chooses domain tools
+      → Specialist LLM (brain #1–#4) chooses domain tools
          → Python @tool + httpx → free geo/weather APIs
+         → or calendar tools → .ics + Google TEMPLATE URL → open in browser (Save)
+                              (± optional Calendar API)
       ← observation strings
    ← one combined answer
 
 Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
-Not this:   CrewAI / AutoGen / RAG / cloud OpenAI keys</pre>
+Specialists: weather · travel · restaurants · calendar
+Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>
 

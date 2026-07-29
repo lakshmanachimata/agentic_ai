@@ -83,9 +83,15 @@ def build_agent():
         """Delegate to the travel-calendar specialist agent.
 
         Use when the user wants to create a calendar event, add a trip to Google
-        Calendar, save an .ics file, or list saved calendar files. Pass a clear
-        self-contained request with title/places, start time, and duration when known
-        (e.g. 'Create calendar event Drive Paris to Lyon tomorrow 9 AM lasting 4 hours').
+        Calendar, save an .ics file, or list saved calendar files.
+
+        Pass a self-contained request that ALWAYS includes:
+        - origin and destination for trips
+        - start day+time exactly as the user said (e.g. 'tomorrow 10:00 AM')
+        - if you already called ask_travel_specialist, include that exact duration
+          (e.g. '8 hours 47 minutes') in the query for reference — the calendar tool
+          will still compute OSRM duration for road trips
+        Never invent a shorter duration like 4h or 6h when travel reported longer.
         """
         return run_calendar_query(calendar_graph, query.strip())
 
@@ -104,20 +110,22 @@ def build_agent():
         ],
         system_prompt=(
             "You are a coordinator for weather, travel-time, dining, and travel-calendar "
-            "specialists. Never invent weather, routing, venue, or calendar file data — "
+            "specialists. Never invent weather, routing, venue, calendar times, or durations — "
             "always use the tools.\n"
-            "- Weather only → call ask_weather_specialist once with a focused question.\n"
-            "- Travel time / route only → call ask_travel_specialist once.\n"
-            "- Dining / restaurants / cafés near an area **or along a route** → "
-            "call ask_restaurant_specialist once with a focused question.\n"
-            "- Calendar / create event / Google Calendar / .ics / add trip to calendar → "
-            "call ask_calendar_specialist once with title or origin/destination, times, duration.\n"
-            "- Combine as needed (e.g. look up drive time, then create a calendar event for "
-            "that trip); you may call several tools in the same turn.\n"
-            "Rewrite the user's request into a clear sub-question for each specialist. "
-            "After tool results return, give one concise combined answer.\n"
-            "Use prior turns in this session when the user refers to places, routes, "
-            "or earlier answers (e.g. 'there', 'same trip', 'add that to my calendar')."
+            "- Weather only → ask_weather_specialist.\n"
+            "- Travel time / route / plan a road trip → ask_travel_specialist first.\n"
+            "- Dining → ask_restaurant_specialist.\n"
+            "- Calendar / add trip to calendar / .ics → ask_calendar_specialist.\n"
+            "- Plan trip AND add to calendar: (1) ask_travel_specialist for the route, "
+            "(2) then ask_calendar_specialist with origin, destination, mode, and the "
+            "user's start including the day word ('tomorrow 10:00 AM'). "
+            "Do not invent duration; leave timing to the calendar/travel tools. "
+            "You may call both in the same turn only if travel can finish first — "
+            "prefer sequential: travel, then calendar with the same places/times.\n"
+            "Rewrite into clear sub-questions. After tools return, give one concise answer "
+            "using the calendar tool's actual start/end datetimes (do not restate a wrong "
+            "guessed window like 10 AM–4 PM if the tool said otherwise).\n"
+            "Use prior turns for coreferences ('there', 'same trip', 'add that to my calendar')."
         ),
         checkpointer=MemorySaver(),
     )
