@@ -25,10 +25,9 @@ from typing import Any
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
 
 from calendar_agent import build_agent as build_calendar_agent
 from calendar_agent import run_query as run_calendar_query
@@ -40,11 +39,17 @@ from weather_agent import build_agent as build_weather_agent
 from weather_agent import run_query as run_weather_query
 
 
-def build_agent():
-    weather_graph = build_weather_agent()
-    travel_graph = build_travel_agent()
-    restaurant_graph = build_restaurant_agent()
-    calendar_graph = build_calendar_agent()
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm_kwargs = {"model": model, "temperature": temperature, "top_k": top_k}
+    weather_graph = build_weather_agent(**llm_kwargs)
+    travel_graph = build_travel_agent(**llm_kwargs)
+    restaurant_graph = build_restaurant_agent(**llm_kwargs)
+    calendar_graph = build_calendar_agent(**llm_kwargs)
 
     @tool
     def ask_weather_specialist(query: str) -> str:
@@ -95,11 +100,7 @@ def build_agent():
         """
         return run_calendar_query(calendar_graph, query.strip())
 
-    llm = ChatOllama(
-        model="qwen3.5:latest",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[

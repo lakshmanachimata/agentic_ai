@@ -6,6 +6,31 @@ import uuid
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
+from langchain_ollama import ChatOllama
+
+DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+DEFAULT_TEMPERATURE = 0.2
+DEFAULT_TOP_K = 40
+
+
+def make_chat_ollama(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+    base_url: str | None = None,
+) -> ChatOllama:
+    """Build a ChatOllama client with optional GUI/CLI overrides."""
+    kwargs: dict[str, Any] = {
+        "model": (model or DEFAULT_OLLAMA_MODEL).strip() or DEFAULT_OLLAMA_MODEL,
+        "base_url": (base_url or DEFAULT_OLLAMA_BASE_URL).strip()
+        or DEFAULT_OLLAMA_BASE_URL,
+        "temperature": DEFAULT_TEMPERATURE if temperature is None else float(temperature),
+    }
+    if top_k is not None:
+        kwargs["top_k"] = int(top_k)
+    return ChatOllama(**kwargs)
 
 
 def extract_assistant_reply(messages: list[Any]) -> str:

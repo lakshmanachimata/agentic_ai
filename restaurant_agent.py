@@ -29,10 +29,9 @@ from typing import Any
 import httpx
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
 from route_common import (
     OsrmRoute,
     discover_intermediate_stops,
@@ -891,12 +890,13 @@ def find_restaurants_at_towns_on_route(
     return "\n".join(lines)
 
 
-def build_agent():
-    llm = ChatOllama(
-        model="qwen3.5:latest",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[

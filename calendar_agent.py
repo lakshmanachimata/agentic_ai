@@ -39,10 +39,9 @@ from urllib.parse import quote, urlencode
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
 from route_common import fetch_osrm_route, format_duration, parse_start_time
 
 import httpx
@@ -545,12 +544,13 @@ def list_saved_calendar_files() -> str:
     return "\n".join(lines)
 
 
-def build_agent():
-    llm = ChatOllama(
-        model="qwen3.5:latest",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[create_calendar_event, create_travel_calendar, list_saved_calendar_files],

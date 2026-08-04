@@ -41,7 +41,7 @@ pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
 
-Opens a browser UI. Default agent is the **orchestrator**. Ask a question, see the answer, and if a calendar invite was created use **Add to Calendar** to open the Google Calendar URL.
+Opens a browser UI. Default agent is the **orchestrator**. Left panel: agent type, **LLM model**, **temperature**, and **top-k**. Ask a question, see the answer, and if a calendar invite was created use **Add to Calendar** to open the Google Calendar URL.
 
 ### CLI
 

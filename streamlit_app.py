@@ -26,14 +26,21 @@ os.environ["AGENTIC_AI_GUI"] = "1"
 
 import json
 
-from agent_common import invoke_agent
+from agent_common import (
+    DEFAULT_OLLAMA_MODEL,
+    DEFAULT_TEMPERATURE,
+    DEFAULT_TOP_K,
+    invoke_agent,
+)
 from calendar_agent import LATEST_INVITE_PATH, build_agent as build_calendar
 from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
 from travel_agent import build_agent as build_travel
 from weather_agent import build_agent as build_weather
 
-CLIENTS: dict[str, tuple[str, str, Callable[[], Any]]] = {
+ClientBuilder = Callable[..., Any]
+
+CLIENTS: dict[str, tuple[str, str, ClientBuilder]] = {
     "orchestrator": (
         "Orchestrator",
         "Routes to weather, travel, dining, and calendar specialists",
@@ -48,6 +55,12 @@ CLIENTS: dict[str, tuple[str, str, Callable[[], Any]]] = {
     "travel": ("Travel", "Drive / walk / bike times and route towns", build_travel),
     "restaurants": ("Restaurants", "Dining near a place or along a route", build_restaurant),
 }
+
+DEFAULT_MODEL_CHOICES = [
+    "qwen3.5:latest",
+    "qwen2.5:7b",
+    "mistral:latest",
+]
 
 GCAL_URL_RE = re.compile(
     r"https://calendar\.google\.com/calendar/render\?[^\s\)\]\"']+",
@@ -184,12 +197,58 @@ def _init_state() -> None:
         st.session_state.client_key = "orchestrator"
     if "invites" not in st.session_state:
         st.session_state.invites = []
+    if "llm_model" not in st.session_state:
+        st.session_state.llm_model = DEFAULT_OLLAMA_MODEL
+    if "llm_temperature" not in st.session_state:
+        st.session_state.llm_temperature = float(DEFAULT_TEMPERATURE)
+    if "llm_top_k" not in st.session_state:
+        st.session_state.llm_top_k = int(DEFAULT_TOP_K)
+
+
+def list_ollama_models() -> list[str]:
+    """Return local Ollama tags; fall back to built-in defaults."""
+    models: list[str] = []
+    try:
+        proc = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            for i, line in enumerate(proc.stdout.splitlines()):
+                if i == 0 and line.lower().startswith("name"):
+                    continue
+                name = line.split()[0].strip() if line.strip() else ""
+                # Skip non-chat embed / image tags where possible
+                if not name:
+                    continue
+                lower = name.lower()
+                if "embed" in lower or "z-image" in lower:
+                    continue
+                models.append(name)
+    except (FileNotFoundError, subprocess.SubprocessError, OSError):
+        pass
+
+    merged: list[str] = []
+    for name in DEFAULT_MODEL_CHOICES + models:
+        if name not in merged:
+            merged.append(name)
+    if st.session_state.get("llm_model") and st.session_state.llm_model not in merged:
+        merged.insert(0, st.session_state.llm_model)
+    return merged or [DEFAULT_OLLAMA_MODEL]
 
 
 @st.cache_resource(show_spinner="Loading agent…")
-def get_graph(client_key: str) -> Any:
+def get_graph(
+    client_key: str,
+    model: str,
+    temperature: float,
+    top_k: int,
+) -> Any:
     _name, _hint, builder = CLIENTS[client_key]
-    return builder()
+    return builder(model=model, temperature=temperature, top_k=top_k)
 
 
 def render_invite(inv: CalendarInvite, idx: int) -> None:
@@ -264,6 +323,40 @@ def main() -> None:
 
         st.write(CLIENTS[st.session_state.client_key][1])
 
+        st.divider()
+        st.subheader("LLM")
+        model_options = list_ollama_models()
+        if st.session_state.llm_model not in model_options:
+            model_options = [st.session_state.llm_model] + model_options
+        st.selectbox(
+            "Model (Ollama)",
+            options=model_options,
+            key="llm_model",
+            help="Local Ollama chat models. Pull with `ollama pull <name>`.",
+        )
+        st.slider(
+            "Temperature",
+            min_value=0.0,
+            max_value=1.5,
+            step=0.05,
+            key="llm_temperature",
+            help="Lower = more deterministic tool use; higher = more creative answers.",
+        )
+        st.slider(
+            "Top-k",
+            min_value=1,
+            max_value=100,
+            step=1,
+            key="llm_top_k",
+            help="Limits sampling to the top-k tokens (Ollama).",
+        )
+        st.caption(
+            f"Active: `{st.session_state.llm_model}` · "
+            f"temp={float(st.session_state.llm_temperature):.2f} · "
+            f"top_k={int(st.session_state.llm_top_k)}"
+        )
+        st.caption("Changing model/params rebuilds the agent (cached per setting).")
+
         if st.button("Clear chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.invites = []
@@ -278,7 +371,7 @@ def main() -> None:
             "- Plan Mumbai → Hyderabad tomorrow 10 AM and add to calendar\n"
             "- Restaurants near London Bridge"
         )
-        st.caption("Requires Ollama running with model `qwen3.5:latest`.")
+        st.caption("Requires Ollama running locally.")
 
     # Chat history
     for msg in st.session_state.messages:
@@ -307,7 +400,12 @@ def main() -> None:
                 else 0.0
             )
             try:
-                graph = get_graph(st.session_state.client_key)
+                graph = get_graph(
+                    st.session_state.client_key,
+                    st.session_state.llm_model,
+                    float(st.session_state.llm_temperature),
+                    int(st.session_state.llm_top_k),
+                )
                 reply = invoke_agent(
                     graph,
                     prompt,
