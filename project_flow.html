@@ -641,7 +641,7 @@
       </p>
       <div class="hero-meta">
         <span class="chip hot">LangChain + LangGraph</span>
-        <span class="chip">Ollama · qwen2.5:7b</span>
+        <span class="chip">Ollama · qwen3.5:latest</span>
         <span class="chip">Agents-as-tools</span>
         <span class="chip">Calendar · OSRM ETA</span>
       </div>
@@ -758,7 +758,7 @@
             </tr>
             <tr>
               <td>Model</td>
-              <td><code>qwen2.5:7b</code> @ <code>127.0.0.1:11434</code></td>
+              <td><code>qwen3.5:latest</code> @ <code>127.0.0.1:11434</code></td>
               <td>Hardcoded in every <code>build_agent()</code>; temperature <code>0.2</code></td>
             </tr>
             <tr>
@@ -786,8 +786,8 @@
       </div>
 
       <div class="callout">
-        <strong>Model:</strong> All agents use <code>qwen2.5:7b</code> via Ollama.
-        Pull with <code>ollama pull qwen2.5:7b</code>.
+        <strong>Model:</strong> All agents use <code>qwen3.5:latest</code> via Ollama.
+        Pull with <code>ollama pull qwen3.5:latest</code>.
       </div>
 
       <h3>Dependencies (<code>requirements.txt</code>)</h3>
@@ -886,7 +886,7 @@ Orchestrator (create_agent + MemorySaver)
                                                  → open URL in browser (user clicks Save)
                                                  (± optional Calendar API)
 
-Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
+Each agent’s “brain” = ChatOllama(qwen3.5:latest) deciding tool calls</pre>
       </div>
     </section>
 
@@ -925,7 +925,7 @@ Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
       <h3>How every agent is built (same pattern)</h3>
       <p>Weather, travel, restaurant, calendar, and orchestrator all follow:</p>
 <pre><span class="tok-sky">llm</span> = ChatOllama(
-    model=<span class="tok-amber">"qwen2.5:7b"</span>,
+    model=<span class="tok-amber">"qwen3.5:latest"</span>,
     base_url=<span class="tok-amber">"http://127.0.0.1:11434"</span>,
     temperature=<span class="tok-coral">0.2</span>,
 )
@@ -1374,7 +1374,7 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
           </thead>
           <tbody>
             <tr><td>Ollama host</td><td><code>http://127.0.0.1:11434</code></td></tr>
-            <tr><td>Model</td><td><code>qwen2.5:7b</code></td></tr>
+            <tr><td>Model</td><td><code>qwen3.5:latest</code></td></tr>
             <tr><td>Temperature</td><td><code>0.2</code></td></tr>
             <tr><td>Default departure</td><td>today 08:00 if start time omitted</td></tr>
             <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
@@ -1391,7 +1391,7 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 <pre><span class="tok-dim"># Setup</span>
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:latest
 
 <span class="tok-dim"># Interactive orchestrator (default)</span>
 python run_agents.py

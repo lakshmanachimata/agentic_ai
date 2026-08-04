@@ -6,7 +6,7 @@ LangChain agent: Ollama + nearby places to eat from OpenStreetMap (free tier).
 - Routes: OSRM public demo (same as travel_agent) to find places along a driving/walking/cycling path
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -893,7 +893,7 @@ def find_restaurants_at_towns_on_route(
 
 def build_agent():
     llm = ChatOllama(
-        model="qwen2.5:7b",
+        model="qwen3.5:latest",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )

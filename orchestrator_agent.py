@@ -7,7 +7,7 @@ restaurant_agent.py, and calendar_agent.py, invoked as tools so the orchestrator
 can delegate as needed.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -96,7 +96,7 @@ def build_agent():
         return run_calendar_query(calendar_graph, query.strip())
 
     llm = ChatOllama(
-        model="qwen2.5:7b",
+        model="qwen3.5:latest",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )

@@ -29,10 +29,21 @@ pip install -r requirements.txt
 Start Ollama (if not already running), then pull the model used by the scripts:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:latest
 ```
 
 ## 3) Easiest way to run
+
+### GUI (Streamlit)
+
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+Opens a browser UI. Default agent is the **orchestrator**. Ask a question, see the answer, and if a calendar invite was created use **Add to Calendar** to open the Google Calendar URL.
+
+### CLI
 
 Use the unified launcher:
 
@@ -146,7 +157,8 @@ python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomo
 
 ## 9) Project files (quick map)
 
-- `run_agents.py` - main launcher
+- `run_agents.py` - main CLI launcher
+- `streamlit_app.py` - Streamlit GUI (query + calendar invite card)
 - `orchestrator_agent.py` - routes to specialists
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup

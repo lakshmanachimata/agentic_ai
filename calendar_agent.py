@@ -14,7 +14,7 @@ packages are installed, also inserts the event into the user's calendar via API:
   First run opens a browser to authorize; token is saved as ``token.json``.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive:
   python calendar_agent.py
@@ -25,6 +25,7 @@ One-off:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -47,6 +48,7 @@ from route_common import fetch_osrm_route, format_duration, parse_start_time
 import httpx
 
 EVENTS_DIR = Path(__file__).resolve().parent / "calendar_events"
+LATEST_INVITE_PATH = EVENTS_DIR / "latest_invite.json"
 CREDENTIALS_PATH = Path(__file__).resolve().parent / "credentials.json"
 TOKEN_PATH = Path(__file__).resolve().parent / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
@@ -319,12 +321,17 @@ def _try_google_api_insert(
 def _open_calendar_url(url: str) -> str:
     """Open the Google Calendar add-event URL in the default browser.
 
-    On macOS this is equivalent to ``open <url>``; elsewhere uses ``webbrowser``
-    (or ``xdg-open`` / Windows start via the stdlib).
+    On macOS this is equivalent to ``open <url>``; elsewhere uses ``webbrowser``.
+    Skipped when ``AGENTIC_AI_GUI=1`` (Streamlit UI opens the link on button click).
     """
     url = (url or "").strip()
     if not url:
         return "Browser: no URL to open."
+    if os.environ.get("AGENTIC_AI_GUI", "").strip() in ("1", "true", "yes", "on"):
+        return (
+            "Browser: skipped auto-open (GUI mode). "
+            "Use the Add to Calendar button in the UI."
+        )
     try:
         if sys.platform == "darwin":
             subprocess.run(["open", url], check=False)
@@ -365,9 +372,26 @@ def _create_event_bundle(
         description=description,
     )
 
+    invite = {
+        "title": title,
+        "when": f"{start.strftime('%Y-%m-%d %H:%M')} → {end.strftime('%Y-%m-%d %H:%M')} (local)",
+        "start": start.strftime("%Y-%m-%d %H:%M"),
+        "end": end.strftime("%Y-%m-%d %H:%M"),
+        "location": location or "",
+        "notes": (description or "")[:500],
+        "ics_path": str(path),
+        "gcal_url": gcal_url,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    try:
+        EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+        LATEST_INVITE_PATH.write_text(json.dumps(invite, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
     lines = [
         f"Title: {title}",
-        f"When: {start.strftime('%Y-%m-%d %H:%M')} → {end.strftime('%Y-%m-%d %H:%M')} (local)",
+        f"When: {invite['when']}",
         f"Location: {location or '(none)'}",
         f"ICS file (import into Google Calendar): {path}",
         "  Google Calendar → Settings → Import & export → Import → choose the .ics file",
@@ -523,7 +547,7 @@ def list_saved_calendar_files() -> str:
 
 def build_agent():
     llm = ChatOllama(
-        model="qwen2.5:7b",
+        model="qwen3.5:latest",
         base_url="http://127.0.0.1:11434",
         temperature=0.2,
     )
