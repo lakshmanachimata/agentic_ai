@@ -626,6 +626,7 @@
         <li><a href="#agents">Agents talk</a></li>
         <li><a href="#walkthrough">Walkthrough</a></li>
         <li><a href="#calendar">Calendar</a></li>
+        <li><a href="#gui">GUI</a></li>
         <li><a href="#files">Files</a></li>
       </ul>
     </div>
@@ -641,9 +642,10 @@
       </p>
       <div class="hero-meta">
         <span class="chip hot">LangChain + LangGraph</span>
-        <span class="chip">Ollama · qwen2.5:7b</span>
+        <span class="chip">Ollama · selectable model</span>
         <span class="chip">Agents-as-tools</span>
-        <span class="chip">Travel calendar · auto-open</span>
+        <span class="chip">Streamlit GUI</span>
+        <span class="chip">Calendar · OSRM ETA</span>
       </div>
     </header>
 
@@ -660,8 +662,10 @@
         <a href="#agents">6. How agents communicate<small>Nested tool calls, not a chat bus</small></a>
         <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
-        <a href="#calendar">9. Travel calendar<small>.ics + auto-open Google tab / optional API</small></a>
-        <a href="#files">10. File map<small>What to read first</small></a>
+        <a href="#calendar">9. Travel calendar<small>OSRM duration · tomorrow dates · GUI Save</small></a>
+        <a href="#gui">10. Streamlit GUI<small>Chat UI · model / temp / top-k</small></a>
+        <a href="#config">11. Config &amp; commands<small>CLI + streamlit run</small></a>
+        <a href="#files">12. File map<small>What to read first</small></a>
       </div>
     </section>
 
@@ -687,7 +691,7 @@
         <article>
           <p class="role">You</p>
           <h4>Guest at the desk</h4>
-          <p>Type questions in the CLI: <code>python run_agents.py</code></p>
+          <p>CLI (<code>run_agents.py</code>) or Streamlit GUI (<code>streamlit_app.py</code>)</p>
         </article>
         <article>
           <p class="role">Orchestrator</p>
@@ -711,7 +715,7 @@
         <li>“Weather in Tokyo”</li>
         <li>“Drive Paris to Lyon at 9:30 AM — towns and weather at arrival”</li>
         <li>“Restaurants in intermediate towns between Boston and Portland”</li>
-        <li>“Create a calendar event for driving Paris to Lyon tomorrow 9 AM lasting 4 hours”</li>
+        <li>“Add Mumbai→Hyderabad tomorrow 10 AM to my calendar” (duration from OSRM, not guessed)</li>
         <li>Combined: travel + weather + dining + “add that trip to my calendar” (orchestrator)</li>
       </ul>
     </section>
@@ -758,8 +762,8 @@
             </tr>
             <tr>
               <td>Model</td>
-              <td><code>qwen2.5:7b</code> @ <code>127.0.0.1:11434</code></td>
-              <td>Hardcoded in every <code>build_agent()</code>; temperature <code>0.2</code></td>
+              <td><code>qwen3.5:latest</code> (default) via <code>make_chat_ollama</code></td>
+              <td>GUI can switch to any local Ollama chat model; temperature + top_k configurable</td>
             </tr>
             <tr>
               <td>HTTP / tools</td>
@@ -767,9 +771,14 @@
               <td>Calls wttr.in, Nominatim, OSRM, Overpass</td>
             </tr>
             <tr>
+              <td>GUI</td>
+              <td><code>streamlit</code> → <code>streamlit_app.py</code></td>
+              <td>Chat UI, calendar invite card, Add to Calendar button, sidebar LLM params</td>
+            </tr>
+            <tr>
               <td>Calendar</td>
-              <td><code>calendar_agent.py</code> → <code>.ics</code> + Google TEMPLATE link + <code>open</code> browser</td>
-              <td>Link is opened automatically; user clicks Save. Optional Calendar API if creds exist</td>
+              <td><code>calendar_agent.py</code> → <code>.ics</code> + OSRM duration + Google TEMPLATE URL</td>
+              <td>CLI auto-opens browser; GUI skips auto-open and uses Add to Calendar button</td>
             </tr>
             <tr>
               <td>Optional Google API</td>
@@ -786,8 +795,8 @@
       </div>
 
       <div class="callout">
-        <strong>Model:</strong> All agents use <code>qwen2.5:7b</code> via Ollama.
-        Pull with <code>ollama pull qwen2.5:7b</code>.
+        <strong>Model:</strong> All agents use <code>qwen3.5:latest</code> via Ollama.
+        Pull with <code>ollama pull qwen3.5:latest</code>.
       </div>
 
       <h3>Dependencies (<code>requirements.txt</code>)</h3>
@@ -796,6 +805,7 @@
 <span class="tok-green">langchain-ollama</span><span class="tok-dim">&gt;=0.2.0</span>
 <span class="tok-green">langgraph</span><span class="tok-dim">&gt;=0.2.0</span>
 <span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span>
+<span class="tok-green">streamlit</span><span class="tok-dim">&gt;=1.32.0</span>
 
 <span class="tok-dim"># Optional Google Calendar API push:</span>
 <span class="tok-dim"># google-api-python-client / google-auth-oauthlib / google-auth-httplib2</span></pre>
@@ -806,13 +816,15 @@
       <p class="section-label">Section 03</p>
       <h2>System architecture</h2>
       <p>
-        Default entry: <code>run_agents.py</code> builds the <strong>orchestrator</strong>.
-        The orchestrator’s tools are not “plain HTTP helpers” — each tool wraps a <strong>full specialist agent graph</strong>.
+        Default entry: <code>run_agents.py</code> (CLI) or <code>streamlit_app.py</code> (GUI) builds the
+        <strong>orchestrator</strong>. The orchestrator’s tools wrap full specialist agent graphs.
+        LLM settings (<code>model</code>, <code>temperature</code>, <code>top_k</code>) flow through
+        <code>make_chat_ollama()</code> into every agent.
       </p>
 
       <div class="arch">
-        <div class="arch-node user">👤 You (CLI / natural language)</div>
-        <div class="arch-arrow">↓  <code>run_agents.py</code> · default <code>--client orchestrator</code></div>
+        <div class="arch-node user">👤 You — CLI or Streamlit GUI</div>
+        <div class="arch-arrow">↓  <code>run_agents.py</code> · or · <code>streamlit run streamlit_app.py</code></div>
         <div class="arch-node orch">
           <div class="tag">orchestrator_agent.py</div>
           <strong style="font-family:'Bricolage Grotesque',sans-serif;font-size:1.15rem;display:block;margin-top:0.2rem">Orchestrator agent</strong>
@@ -854,7 +866,7 @@
               <li><code>create_calendar_event</code></li>
               <li><code>create_travel_calendar</code></li>
               <li><code>list_saved_calendar_files</code></li>
-              <li>→ <code>.ics</code> + open Google tab (± API)</li>
+              <li>→ OSRM duration + <code>.ics</code> + open Google tab (± API)</li>
             </ul>
           </div>
         </div>
@@ -866,6 +878,7 @@
           <span class="api-pill">Overpass — OSM POIs</span>
           <span class="api-pill">calendar_events/*.ics</span>
           <span class="api-pill">Google TEMPLATE URL + open</span>
+          <span class="api-pill">Streamlit GUI</span>
         </div>
       </div>
 
@@ -874,18 +887,20 @@
 <pre class="mermaid-ish" style="margin:0;padding:0;background:transparent">User
  │
  ▼
-run_agents.py
+run_agents.py  /  streamlit_app.py
  │
  ▼
-Orchestrator (create_agent + MemorySaver)
+Orchestrator (create_agent + MemorySaver + make_chat_ollama)
  ├── ask_weather_specialist   → Weather graph    → get_weather → wttr.in
  ├── ask_travel_specialist    → Travel graph     → OSRM / Nominatim / wttr
  ├── ask_restaurant_specialist → Restaurant graph → Overpass / OSRM / Nominatim
- └── ask_calendar_specialist  → Calendar graph   → .ics file + Google add link
-                                                 → open URL in browser (user clicks Save)
+ └── ask_calendar_specialist  → Calendar graph   → OSRM duration (road trips)
+                                                 → .ics + Google add link
+                                                 → CLI: open URL · GUI: Add to Calendar button
                                                  (± optional Calendar API)
 
-Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
+LLM params (model, temperature, top_k) apply to orchestrator + all specialists
+Each agent’s “brain” = ChatOllama deciding tool calls</pre>
       </div>
     </section>
 
@@ -922,30 +937,30 @@ Each agent’s “brain” = ChatOllama(qwen2.5:7b) deciding tool calls</pre>
       </div>
 
       <h3>How every agent is built (same pattern)</h3>
-      <p>Weather, travel, restaurant, calendar, and orchestrator all follow:</p>
-<pre><span class="tok-sky">llm</span> = ChatOllama(
-    model=<span class="tok-amber">"qwen2.5:7b"</span>,
-    base_url=<span class="tok-amber">"http://127.0.0.1:11434"</span>,
-    temperature=<span class="tok-coral">0.2</span>,
+      <p>Weather, travel, restaurant, calendar, and orchestrator all use <code>make_chat_ollama(...)</code>:</p>
+<pre><span class="tok-sky">llm</span> = make_chat_ollama(
+    model=model,              <span class="tok-dim"># default qwen3.5:latest</span>
+    temperature=temperature,  <span class="tok-dim"># default 0.2</span>
+    top_k=top_k,              <span class="tok-dim"># default 40 (GUI / optional)</span>
 )
 <span class="tok-dim"># returns a LangGraph runnable</span>
 <span class="tok-green">return</span> create_agent(
     llm,
-    tools=[...],          <span class="tok-dim"># @tool functions the model may call</span>
-    system_prompt=<span class="tok-amber">"..."</span>,  <span class="tok-dim"># role + guardrails</span>
+    tools=[...],
+    system_prompt=<span class="tok-amber">"..."</span>,
     checkpointer=MemorySaver(),
 )</pre>
 
       <div class="callout">
-        <strong>Key idea:</strong> <code>create_agent</code> wires a ReAct-style loop for you.
-        You do <em>not</em> hand-write a custom <code>StateGraph</code> in this project —
-        LangChain’s helper builds that graph under the hood.
+        <strong>Shared factory:</strong> <code>agent_common.make_chat_ollama</code> keeps CLI defaults
+        while Streamlit passes sidebar selections into every <code>build_agent(model=..., temperature=..., top_k=...)</code>
+        — including nested specialists under the orchestrator.
       </div>
 
-      <h3>Temperature = 0.2</h3>
+      <h3>Temperature &amp; top-k</h3>
       <p>
-        Low temperature → more deterministic tool choice and wording.
-        Good for routing/agent systems where weird creative guesses would be bad.
+        Defaults: temperature <code>0.2</code>, top-k <code>40</code> — good for deterministic tool choice.
+        Streamlit sidebar lets you raise temperature for freer wording or change top-k / model without editing code.
       </p>
     </section>
 
@@ -1025,19 +1040,17 @@ result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(
       </div>
 
       <h3>Real code shape (<code>orchestrator_agent.py</code>)</h3>
-<pre>weather_graph = build_weather_agent()
-travel_graph = build_travel_agent()
-restaurant_graph = build_restaurant_agent()
-calendar_graph = build_calendar_agent()
+<pre>weather_graph = build_weather_agent(**llm_kwargs)
+travel_graph = build_travel_agent(**llm_kwargs)
+restaurant_graph = build_restaurant_agent(**llm_kwargs)
+calendar_graph = build_calendar_agent(**llm_kwargs)
 
 <span class="tok-sky">@tool</span>
 <span class="tok-green">def</span> ask_calendar_specialist(query: str) -> str:
     <span class="tok-amber">"""Delegate to the travel-calendar specialist…"""</span>
     <span class="tok-green">return</span> run_calendar_query(calendar_graph, query.strip())
 
-<span class="tok-dim"># same idea for weather + travel + restaurants…</span>
-
-create_agent(llm, tools=[
+create_agent(make_chat_ollama(**llm_kwargs), tools=[
     ask_weather_specialist,
     ask_travel_specialist,
     ask_restaurant_specialist,
@@ -1152,7 +1165,7 @@ create_agent(llm, tools=[
             </div>
             <div class="seq-row">
               <div class="seq-who">8 · (optional) Calendar</div>
-              <div class="seq-what">If you also ask “add this trip to my calendar” → <code>ask_calendar_specialist</code> writes an <code>.ics</code>, builds a Google add link, and <strong>opens it in the browser</strong> for you to Save.</div>
+              <div class="seq-what">If you also ask “add this trip to my calendar” → <code>ask_calendar_specialist</code> runs <code>create_travel_calendar</code> with <code>start_time</code> including <strong>tomorrow</strong>, looks up <strong>OSRM duration</strong>, writes <code>.ics</code> + TEMPLATE URL. CLI may auto-open; GUI shows an invite card and <strong>Add to Calendar</strong>.</div>
             </div>
             <div class="seq-row">
               <div class="seq-who">9 · Orchestrator</div>
@@ -1211,7 +1224,7 @@ create_agent(llm, tools=[
               <tr>
                 <td>Calendar</td>
                 <td><code>create_calendar_event</code><br/><code>create_travel_calendar</code><br/><code>list_saved_calendar_files</code></td>
-                <td>Single event or trip → <code>.ics</code> + auto-open Google tab (± API)</td>
+                <td>Single event or road trip → OSRM sets trip length; required day+time; CLI auto-open / GUI Add to Calendar (± API)</td>
               </tr>
               <tr>
                 <td>Orchestrator</td>
@@ -1257,6 +1270,11 @@ create_agent(llm, tools=[
                 <td>Restaurant agent</td>
               </tr>
               <tr>
+                <td>OSRM (also via calendar)</td>
+                <td>Authoritative trip duration for <code>create_travel_calendar</code></td>
+                <td>Calendar agent (road trips) — avoids inventing 4h/6h</td>
+              </tr>
+              <tr>
                 <td>Local <code>.ics</code> + Google TEMPLATE URL</td>
                 <td>Calendar files + quick-add link; browser opened via <code>open</code> (macOS) / <code>webbrowser</code></td>
                 <td>Calendar agent (always)</td>
@@ -1280,84 +1298,187 @@ create_agent(llm, tools=[
       <p class="section-label">Section 09</p>
       <h2>Travel calendar agent</h2>
       <p class="lead">
-        <code>calendar_agent.py</code> turns “add this trip to my calendar” into an <code>.ics</code> file,
-        a Google Calendar TEMPLATE link, and <strong>opens that link in your browser</strong>
-        so you can click <strong>Save</strong> manually — no OAuth required for this path.
+        <code>calendar_agent.py</code> turns “add this trip to my calendar” into an accurate event:
+        <strong>start day+time from the user</strong>, <strong>end time from live OSRM routing</strong>
+        (not a guessed 4h/6h), then writes <code>.ics</code>, builds a Google TEMPLATE link, and
+        <strong>opens the browser</strong> so you click Save.
       </p>
+
+      <div class="callout warn">
+        <strong>Bug that was fixed:</strong> Orchestrator sometimes invented “10 AM–4 PM (6 hours)”
+        while travel reported ~8h 47m, and defaulted start to <em>today 08:00</em> instead of
+        <em>tomorrow 10:00</em>. Road-trip calendars now require an explicit day in
+        <code>start_time</code> and take duration from OSRM.
+      </div>
 
       <div class="analogy">
         <article>
-          <p class="role">Always</p>
-          <h4>.ics file</h4>
-          <p>Written under <code>calendar_events/</code>. Import via Google Calendar → Settings → Import.</p>
+          <p class="role">Required</p>
+          <h4>start_time with day</h4>
+          <p>e.g. <code>tomorrow 10:00 AM</code> or <code>2026-07-30 10:00</code>. Empty / “10 AM” alone is rejected.</p>
         </article>
         <article>
-          <p class="role">Always</p>
-          <h4>Quick-add link</h4>
-          <p>Prefills Google Calendar’s create form (<code>action=TEMPLATE</code>).</p>
+          <p class="role">Authoritative</p>
+          <h4>OSRM duration</h4>
+          <p><code>create_travel_calendar</code> looks up the route; e.g. Mumbai→Hyderabad ≈ 8h 47m → 10:00–18:47.</p>
         </article>
         <article>
-          <p class="role">Always (new)</p>
-          <h4>Auto-open browser</h4>
-          <p>On macOS runs <code>open &lt;url&gt;</code>; elsewhere uses <code>webbrowser.open</code>. You click Save.</p>
+          <p class="role">CLI / GUI</p>
+          <h4>Open Google Calendar</h4>
+          <p>CLI: <code>open &lt;url&gt;</code>. GUI (<code>AGENTIC_AI_GUI=1</code>): skip auto-open; user clicks <strong>Add to Calendar</strong>.</p>
         </article>
         <article>
           <p class="role">Optional</p>
           <h4>Calendar API</h4>
-          <p>If <code>credentials.json</code> + Google packages exist, also inserts into your primary calendar.</p>
+          <p>If <code>credentials.json</code> exists, also inserts into primary calendar.</p>
         </article>
       </div>
 
-      <h3>Example flow</h3>
+      <h3>Example flow (plan trip + calendar)</h3>
       <div class="panel">
         <div class="seq">
           <div class="seq-row">
             <div class="seq-who">You</div>
-            <div class="seq-what"><code>python run_agents.py -c calendar "Drive Paris to Lyon tomorrow 9 AM for 4 hours — add to calendar"</code></div>
+            <div class="seq-what"><code>plan trip from mumbai to hyderabad by road tomorrow 10 AM and add it to calendar</code></div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Calendar LLM</div>
-            <div class="seq-what">Calls <code>create_travel_calendar(origin="Paris", destination="Lyon", start_time="tomorrow 9 AM", duration="4 hours")</code></div>
+            <div class="seq-who">Orchestrator</div>
+            <div class="seq-what">Calls travel specialist, then calendar with origin/destination and <code>tomorrow 10:00 AM</code> — does not invent duration.</div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Tool</div>
-            <div class="seq-what">Builds iCalendar VEVENT → saves <code>calendar_events/….ics</code> → builds Google TEMPLATE URL → <code>_open_calendar_url</code> → <code>open &lt;url&gt;</code> on macOS</div>
+            <div class="seq-who">Calendar tool</div>
+            <div class="seq-what"><code>create_travel_calendar(..., start_time="tomorrow 10 AM", duration="")</code> → <code>_osrm_duration_seconds</code> → ~527 min</div>
           </div>
           <div class="seq-row">
-            <div class="seq-who">Browser</div>
-            <div class="seq-what">Google Calendar “Add event” page opens prefilled — you click <strong>Save</strong></div>
-          </div>
-          <div class="seq-row">
-            <div class="seq-who">CLI reply</div>
-            <div class="seq-what">Reports .ics path, link, and “Browser: opened Google Calendar add-event page…”</div>
+            <div class="seq-who">Result</div>
+            <div class="seq-what">Local window e.g. <strong>tomorrow 10:00 → 18:47</strong> · <code>.ics</code> + <code>latest_invite.json</code> · CLI opens browser or GUI shows Add to Calendar</div>
           </div>
         </div>
       </div>
 
-      <div class="callout">
-        <strong>Code:</strong> <code>_open_calendar_url()</code> in <code>calendar_agent.py</code> —
-        <code>subprocess.run(["open", url])</code> on Darwin; <code>webbrowser.open</code> elsewhere.
-        Called from <code>_create_event_bundle</code> right after the TEMPLATE URL is built.
-      </div>
+      <h3>Key helpers in code</h3>
+<pre><span class="tok-sky">_parse_event_start</span>(<span class="tok-amber">"tomorrow 10 AM"</span>)   <span class="tok-dim"># today/tomorrow / YYYY-MM-DD</span>
+<span class="tok-sky">_parse_duration_minutes</span>(<span class="tok-amber">"8 hours 47 minutes"</span>)  <span class="tok-dim"># fallback only</span>
+<span class="tok-sky">_osrm_duration_seconds</span>(origin, dest, mode)  <span class="tok-dim"># live route length</span>
+<span class="tok-sky">_open_calendar_url</span>(gcal_url)              <span class="tok-dim"># skipped when AGENTIC_AI_GUI=1</span></pre>
 
       <div class="callout">
-        <strong>Orchestrator tip:</strong> After travel results, say
-        <em>“add that trip to my calendar”</em> — the orchestrator delegates to
-        <code>ask_calendar_specialist</code>; the browser tab still opens the same way.
+        <strong>Orchestrator rule:</strong> For “plan trip + calendar”, call travel first, then calendar
+        with the same places and the user’s day+time. Restate the <em>tool’s</em> start/end in the
+        final answer — never a guessed shorter window.
       </div>
 
       <h3>Optional API setup</h3>
 <pre><span class="tok-dim"># Only if you want direct push (not required — browser Save works without this)</span>
 pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
-<span class="tok-dim"># Place OAuth desktop client JSON as credentials.json in the project folder</span>
-<span class="tok-dim"># First create-event run opens a browser; token.json is saved</span></pre>
+<span class="tok-dim"># Place OAuth desktop client JSON as credentials.json in the project folder</span></pre>
+    </section>
+
+    <!-- GUI -->
+    <section id="gui">
+      <p class="section-label">Section 10</p>
+      <h2>Streamlit GUI</h2>
+      <p class="lead">
+        <code>streamlit_app.py</code> is a browser chat UI over the same agents.
+        Default client is the <strong>orchestrator</strong>. Left sidebar picks agent, LLM model,
+        temperature, and top-k. Calendar events appear as invite cards with an
+        <strong>Add to Calendar</strong> button that opens the Google TEMPLATE URL.
+      </p>
+
+      <div class="analogy">
+        <article>
+          <p class="role">Chat</p>
+          <h4>Query + reply</h4>
+          <p>Same <code>invoke_agent</code> + session <code>thread_id</code> as the CLI REPL.</p>
+        </article>
+        <article>
+          <p class="role">Sidebar</p>
+          <h4>Agent picker</h4>
+          <p>Orchestrator (default), weather, travel, restaurants, or calendar-only.</p>
+        </article>
+        <article>
+          <p class="role">Sidebar</p>
+          <h4>LLM params</h4>
+          <p>Model from <code>ollama list</code>, temperature 0–1.5, top-k 1–100.</p>
+        </article>
+        <article>
+          <p class="role">Calendar card</p>
+          <h4>Add to Calendar</h4>
+          <p>Parsed from reply / <code>latest_invite.json</code>; button runs macOS <code>open</code>.</p>
+        </article>
+      </div>
+
+      <h3>Sidebar controls</h3>
+      <div class="panel" style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Control</th><th>Default</th><th>Effect</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Agent</td>
+              <td><code>orchestrator</code></td>
+              <td>Which <code>build_agent</code> graph to load</td>
+            </tr>
+            <tr>
+              <td>Model (Ollama)</td>
+              <td><code>qwen3.5:latest</code></td>
+              <td>Passed to every specialist via <code>make_chat_ollama(model=...)</code></td>
+            </tr>
+            <tr>
+              <td>Temperature</td>
+              <td><code>0.2</code></td>
+              <td>Sampling temperature for ChatOllama</td>
+            </tr>
+            <tr>
+              <td>Top-k</td>
+              <td><code>40</code></td>
+              <td>Ollama <code>top_k</code> token sampling limit</td>
+            </tr>
+            <tr>
+              <td>Clear chat</td>
+              <td>—</td>
+              <td>New <code>thread_id</code>; clears messages + invite cards</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>How Add to Calendar works</h3>
+      <div class="panel">
+        <div class="seq">
+          <div class="seq-row">
+            <div class="seq-who">1 · Query</div>
+            <div class="seq-what">User asks to plan a trip and add it to calendar (orchestrator → travel + calendar).</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">2 · Calendar tool</div>
+            <div class="seq-what">Writes <code>.ics</code>, Google TEMPLATE URL, and <code>calendar_events/latest_invite.json</code>. With <code>AGENTIC_AI_GUI=1</code>, skips auto browser open.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">3 · UI</div>
+            <div class="seq-what"><code>parse_calendar_invites</code> loads title / when / location / URL into an invite card.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">4 · Button</div>
+            <div class="seq-what"><strong>Add to Calendar</strong> runs <code>open &lt;gcal_url&gt;</code> (macOS) so the user clicks Save in Google Calendar.</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Launch</h3>
+<pre><span class="tok-dim"># Sets AGENTIC_AI_GUI=1 inside the app</span>
+streamlit run streamlit_app.py</pre>
     </section>
 
     <!-- CONFIG -->
     <section id="config">
-      <p class="section-label">Section 10</p>
+      <p class="section-label">Section 11</p>
       <h2>Config, entry points, running it</h2>
-      <p>Almost no env-var configuration — settings are hardcoded in agent builders.</p>
+      <p>
+        CLI uses defaults from <code>agent_common</code>. Streamlit overrides model / temperature / top-k
+        from the sidebar. GUI mode sets <code>AGENTIC_AI_GUI=1</code> so calendar does not auto-open.
+      </p>
       <div class="panel" style="overflow-x:auto">
         <table>
           <thead>
@@ -1365,12 +1486,16 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
           </thead>
           <tbody>
             <tr><td>Ollama host</td><td><code>http://127.0.0.1:11434</code></td></tr>
-            <tr><td>Model</td><td><code>qwen2.5:7b</code></td></tr>
-            <tr><td>Temperature</td><td><code>0.2</code></td></tr>
-            <tr><td>Default departure</td><td>today 08:00 if start time omitted</td></tr>
+            <tr><td>Default model</td><td><code>qwen3.5:latest</code> (GUI selectable)</td></tr>
+            <tr><td>Default temperature</td><td><code>0.2</code> (GUI slider 0–1.5)</td></tr>
+            <tr><td>Default top-k</td><td><code>40</code> (GUI slider 1–100)</td></tr>
+            <tr><td>LLM factory</td><td><code>agent_common.make_chat_ollama</code></td></tr>
+            <tr><td>Default departure</td><td>today 08:00 if start time omitted (travel tools)</td></tr>
             <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
-            <tr><td>Calendar output dir</td><td><code>calendar_events/</code></td></tr>
-            <tr><td>Calendar browser open</td><td>macOS <code>open &lt;url&gt;</code> via <code>_open_calendar_url</code></td></tr>
+            <tr><td>Calendar output dir</td><td><code>calendar_events/</code> (+ <code>latest_invite.json</code>)</td></tr>
+            <tr><td>Calendar trip duration</td><td>OSRM via <code>_osrm_duration_seconds</code></td></tr>
+            <tr><td>Calendar start_time</td><td>Required; must include day (<code>tomorrow</code> / <code>YYYY-MM-DD</code>)</td></tr>
+            <tr><td>GUI flag</td><td><code>AGENTIC_AI_GUI=1</code> — skip calendar auto-open</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
         </table>
@@ -1380,16 +1505,19 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 <pre><span class="tok-dim"># Setup</span>
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
-ollama pull qwen2.5:7b
+ollama pull qwen3.5:latest
 
-<span class="tok-dim"># Interactive orchestrator (default)</span>
+<span class="tok-dim"># Streamlit GUI (recommended for demos)</span>
+streamlit run streamlit_app.py
+
+<span class="tok-dim"># Interactive orchestrator (CLI)</span>
 python run_agents.py
 
 <span class="tok-dim"># Specialist clients</span>
 python run_agents.py --client weather
 python run_agents.py -c travel "Drive Boston to NYC at 7 AM with towns and weather"
 python run_agents.py -c restaurants "Casual food near London Bridge"
-python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomorrow 9 AM for 4 hours"
+python run_agents.py -c calendar "Add Mumbai to Hyderabad tomorrow 10 AM to calendar"
 
 <span class="tok-dim"># Direct module entry points also work</span>
 python weather_agent.py
@@ -1399,20 +1527,24 @@ python orchestrator_agent.py</pre>
 
     <!-- FILES -->
     <section id="files">
-      <p class="section-label">Section 11</p>
+      <p class="section-label">Section 12</p>
       <h2>Project files — what each one does</h2>
       <div class="files">
         <div class="file-row">
+          <div class="name">streamlit_app.py</div>
+          <div class="desc">Streamlit GUI — chat, sidebar agent/LLM params, calendar invite + Add to Calendar</div>
+        </div>
+        <div class="file-row">
           <div class="name">run_agents.py</div>
-          <div class="desc">Unified launcher; client registry (includes <code>calendar</code>); default = orchestrator</div>
+          <div class="desc">Unified CLI launcher; client registry; default = orchestrator</div>
         </div>
         <div class="file-row">
           <div class="name">agent_common.py</div>
-          <div class="desc"><code>invoke_agent</code>, <code>run_interactive</code>, <code>extract_assistant_reply</code></div>
+          <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code>, <code>run_interactive</code></div>
         </div>
         <div class="file-row">
           <div class="name">orchestrator_agent.py</div>
-          <div class="desc">Supervisor; 4 specialists as tools (weather, travel, dining, calendar)</div>
+          <div class="desc">Supervisor; passes model/temp/top_k into all 4 specialists</div>
         </div>
         <div class="file-row">
           <div class="name">weather_agent.py</div>
@@ -1428,7 +1560,7 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">calendar_agent.py</div>
-          <div class="desc">Travel calendar — <code>.ics</code> + Google link + auto-open browser (± optional API)</div>
+          <div class="desc">OSRM duration + day-aware start + <code>.ics</code> / TEMPLATE URL / CLI auto-open / GUI Add to Calendar</div>
         </div>
         <div class="file-row">
           <div class="name">route_common.py</div>
@@ -1436,26 +1568,27 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">calendar_events/</div>
-          <div class="desc">Generated <code>.ics</code> files (gitignored)</div>
+          <div class="desc">Generated <code>.ics</code> + <code>latest_invite.json</code> (gitignored)</div>
         </div>
         <div class="file-row">
           <div class="name">requirements.txt</div>
-          <div class="desc">Core pins + commented optional Google Calendar packages</div>
+          <div class="desc">Includes <code>streamlit</code> + optional Google Calendar packages (commented)</div>
         </div>
         <div class="file-row">
           <div class="name">README.md</div>
-          <div class="desc">Setup + example questions</div>
+          <div class="desc">Setup + CLI/GUI commands</div>
         </div>
       </div>
 
       <h3>Suggested reading order for a fresher</h3>
       <ol class="read-order">
         <li><code>README.md</code> — purpose and how to run</li>
-        <li><code>run_agents.py</code> — entry + client map</li>
-        <li><code>agent_common.py</code> — one turn + session memory</li>
-        <li><code>weather_agent.py</code> — full agent pattern in ~100 lines</li>
-        <li><code>orchestrator_agent.py</code> — multi-agent delegation (4 specialists)</li>
-        <li><code>calendar_agent.py</code> — <code>.ics</code> + auto-open Google Save tab</li>
+        <li><code>streamlit_app.py</code> — GUI entry + sidebar LLM params</li>
+        <li><code>run_agents.py</code> — CLI entry + client map</li>
+        <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory</li>
+        <li><code>weather_agent.py</code> — full agent pattern</li>
+        <li><code>orchestrator_agent.py</code> — multi-agent delegation (params → specialists)</li>
+        <li><code>calendar_agent.py</code> — OSRM duration, dates, GUI-aware open</li>
         <li><code>travel_agent.py</code> then <code>route_common.py</code></li>
         <li><code>restaurant_agent.py</code> — richest tools</li>
       </ol>
@@ -1466,18 +1599,20 @@ python orchestrator_agent.py</pre>
       <p class="section-label">Cheat sheet</p>
       <h2>One-screen mental model</h2>
       <div class="panel dark">
-<pre style="margin:0;background:transparent;padding:0"><span class="tok-amber">User language</span>
-   → Orchestrator LLM (brain #0) chooses specialist tools
-      → Specialist LLM (brain #1–#4) chooses domain tools
-         → Python @tool + httpx → free geo/weather APIs
-         → or calendar tools → .ics + Google TEMPLATE URL → open in browser (Save)
-                              (± optional Calendar API)
-      ← observation strings
-   ← one combined answer
+<pre style="margin:0;background:transparent;padding:0"><span class="tok-amber">User</span> (CLI or Streamlit)
+   → choose agent + model + temperature + top_k (GUI sidebar)
+   → Orchestrator LLM chooses specialist tools
+      → Specialist LLMs (same LLM params) choose domain tools
+         → httpx → free geo/weather APIs
+         → or calendar → OSRM duration + .ics + Google URL
+            → CLI: open URL · GUI: Add to Calendar button
+   ← one combined answer (+ invite card in GUI)
 
+Factory:    agent_common.make_chat_ollama(model, temperature, top_k)
 Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
 Specialists: weather · travel · restaurants · calendar
+GUI:        streamlit run streamlit_app.py
 Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>

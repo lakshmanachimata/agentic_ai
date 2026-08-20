@@ -1,12 +1,12 @@
 """
-LangChain agent (ReAct-style graph): Ollama (qwen2.5:7b) + travel time via OSM/Nominatim + OSRM.
+LangChain agent (ReAct-style graph): Ollama (qwen3.5:latest) + travel time via OSM/Nominatim + OSRM.
 
 Geocoding: Nominatim (OpenStreetMap) — https://nominatim.org
 Routing: OSRM public demo — https://project-osrm.org
 Weather along route: wttr.in (free)
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -26,10 +26,9 @@ from typing import Any, Literal
 import httpx
 from langchain_core.tools import tool
 from langchain.agents import create_agent
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
 from route_common import (
     OsrmRoute,
     discover_intermediate_stops,
@@ -217,12 +216,13 @@ def get_route_stops_with_weather(
     return "\n".join(lines)
 
 
-def build_agent():
-    llm = ChatOllama(
-        model="qwen2.5:7b",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[get_travel_time, get_route_stops_with_weather],

@@ -14,7 +14,7 @@ packages are installed, also inserts the event into the user's calendar via API:
   First run opens a browser to authorize; token is saved as ``token.json``.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive:
   python calendar_agent.py
@@ -25,6 +25,7 @@ One-off:
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -38,13 +39,15 @@ from urllib.parse import quote, urlencode
 
 from langchain.agents import create_agent
 from langchain_core.tools import tool
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
-from route_common import parse_start_time
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
+from route_common import fetch_osrm_route, format_duration, parse_start_time
+
+import httpx
 
 EVENTS_DIR = Path(__file__).resolve().parent / "calendar_events"
+LATEST_INVITE_PATH = EVENTS_DIR / "latest_invite.json"
 CREDENTIALS_PATH = Path(__file__).resolve().parent / "credentials.json"
 TOKEN_PATH = Path(__file__).resolve().parent / "token.json"
 SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
@@ -82,15 +85,30 @@ def _fmt_gcal_local(dt: datetime) -> str:
 
 
 def _parse_event_start(start_time: str) -> datetime:
-    """Parse start time; supports today/tomorrow prefixes then route_common rules."""
+    """Parse start time; supports today/tomorrow and absolute datetimes."""
     raw = (start_time or "").strip()
+    if not raw:
+        return parse_start_time("")
+
     lowered = raw.lower()
     day_offset = 0
-    if lowered.startswith("tomorrow"):
+    if re.search(r"\bday after tomorrow\b", lowered):
+        day_offset = 2
+        raw = re.sub(r"\bday after tomorrow\b", "", raw, flags=re.I)
+    elif re.search(r"\btomorrow\b", lowered):
         day_offset = 1
-        raw = raw[8:].lstrip(" ,:-")
-    elif lowered.startswith("today"):
-        raw = raw[5:].lstrip(" ,:-")
+        raw = re.sub(r"\btomorrow\b", "", raw, flags=re.I)
+    elif re.search(r"\btoday\b", lowered):
+        day_offset = 0
+        raw = re.sub(r"\btoday\b", "", raw, flags=re.I)
+
+    raw = re.sub(r"\bat\b", " ", raw, flags=re.I)
+    raw = re.sub(r"\s+", " ", raw).strip(" ,:-")
+
+    # Absolute date already present — do not add relative day_offset on top.
+    if re.search(r"\d{4}-\d{2}-\d{2}", raw):
+        return parse_start_time(raw)
+
     base = parse_start_time(raw)
     if day_offset:
         base = base + timedelta(days=day_offset)
@@ -98,13 +116,23 @@ def _parse_event_start(start_time: str) -> datetime:
 
 
 def _parse_duration_minutes(duration: str, default: int = 60) -> int:
+    """Parse lengths like '8 hours 47 minutes', '8h47m', '527', '8:47' (h:mm)."""
     raw = (duration or "").strip().lower()
     if not raw:
         return default
     if raw.isdigit():
         return max(1, int(raw))
+
+    # Trailing "h:mm" or "hh:mm" as a duration (not a clock time of day)
+    m_colon = re.fullmatch(r"(\d{1,2}):(\d{2})(?:\s*(?:h|hr|hrs|hours))?$", raw)
+    if m_colon:
+        return max(1, int(m_colon.group(1)) * 60 + int(m_colon.group(2)))
+
     total = 0
-    for amount, unit in re.findall(r"(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)", raw):
+    for amount, unit in re.findall(
+        r"(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b",
+        raw,
+    ):
         n = float(amount)
         if unit.startswith("h"):
             total += int(round(n * 60))
@@ -112,10 +140,37 @@ def _parse_duration_minutes(duration: str, default: int = 60) -> int:
             total += int(round(n))
     if total > 0:
         return total
+
+    # Compact forms: 8h47m, 8hr47min
+    m_compact = re.fullmatch(
+        r"(\d+(?:\.\d+)?)\s*h(?:ours?)?\s*(\d+)?\s*m(?:in(?:utes?)?)?",
+        raw,
+    )
+    if m_compact:
+        hours = float(m_compact.group(1))
+        mins = int(m_compact.group(2) or 0)
+        return max(1, int(round(hours * 60)) + mins)
+
     try:
         return max(1, int(float(raw)))
     except ValueError:
         return default
+
+
+def _osrm_duration_seconds(origin: str, destination: str, mode: str) -> tuple[float | None, str]:
+    """Return (seconds, note) from OSRM, or (None, error)."""
+    try:
+        with httpx.Client() as client:
+            route = fetch_osrm_route(client, origin, destination, mode or "driving")
+    except Exception as e:
+        return None, f"Routing lookup failed: {e}"
+
+    if isinstance(route, str):
+        return None, route
+    return float(route.duration_s), (
+        f"OSRM {mode or 'driving'}: {format_duration(route.duration_s)} "
+        f"({route.distance_m / 1000:.1f} km)"
+    )
 
 
 def _safe_filename(title: str) -> str:
@@ -267,10 +322,16 @@ def _open_calendar_url(url: str) -> str:
 
     On macOS this is equivalent to ``open <url>``; elsewhere uses ``webbrowser``
     (or ``xdg-open`` / Windows start via the stdlib).
+    Skipped when ``AGENTIC_AI_GUI=1`` (Streamlit UI opens the link on button click).
     """
     url = (url or "").strip()
     if not url:
         return "Browser: no URL to open."
+    if os.environ.get("AGENTIC_AI_GUI", "").strip() in ("1", "true", "yes", "on"):
+        return (
+            "Browser: skipped auto-open (GUI mode). "
+            "Use the Add to Calendar button in the UI."
+        )
     try:
         if sys.platform == "darwin":
             subprocess.run(["open", url], check=False)
@@ -311,9 +372,26 @@ def _create_event_bundle(
         description=description,
     )
 
+    invite = {
+        "title": title,
+        "when": f"{start.strftime('%Y-%m-%d %H:%M')} → {end.strftime('%Y-%m-%d %H:%M')} (local)",
+        "start": start.strftime("%Y-%m-%d %H:%M"),
+        "end": end.strftime("%Y-%m-%d %H:%M"),
+        "location": location or "",
+        "notes": (description or "")[:500],
+        "ics_path": str(path),
+        "gcal_url": gcal_url,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    try:
+        EVENTS_DIR.mkdir(parents=True, exist_ok=True)
+        LATEST_INVITE_PATH.write_text(json.dumps(invite, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
     lines = [
         f"Title: {title}",
-        f"When: {start.strftime('%Y-%m-%d %H:%M')} → {end.strftime('%Y-%m-%d %H:%M')} (local)",
+        f"When: {invite['when']}",
         f"Location: {location or '(none)'}",
         f"ICS file (import into Google Calendar): {path}",
         "  Google Calendar → Settings → Import & export → Import → choose the .ics file",
@@ -345,24 +423,30 @@ def create_calendar_event(
     """Create one calendar event as an .ics file plus a Google Calendar add link.
 
     Also tries Google Calendar API insert when credentials.json / token.json exist.
+    Opens the Google add-event page in the browser for the user to Save.
 
     Args:
-        title: Event title (e.g. 'Drive Paris to Lyon').
-        start_time: Start — '9:00 AM', '2026-07-30 09:00', '14:30', etc.
-        duration: Length if end_time empty — '90', '90 min', '2 hours' (default 1 hour).
+        title: Event title (e.g. 'Drive Mumbai to Hyderabad').
+        start_time: REQUIRED clock + day. Prefer 'tomorrow 10:00 AM' or
+            '2026-07-30 10:00'. Never omit the day word if the user said tomorrow.
+        duration: Length if end_time empty — e.g. '8 hours 47 minutes', '527 min'.
         location: Optional place / address.
-        description: Optional notes (route, passengers, packing list).
-        end_time: Optional explicit end; overrides duration when set.
+        description: Optional notes.
+        end_time: Optional explicit end (same date rules as start_time).
     """
     title = (title or "").strip()
     if not title:
         return "Error: title is required."
+    if not (start_time or "").strip():
+        return (
+            "Error: start_time is required. Pass e.g. 'tomorrow 10:00 AM' or "
+            "'2026-07-30 10:00' (local)."
+        )
 
     start = _parse_event_start(start_time)
     if (end_time or "").strip():
         end = _parse_event_start(end_time)
         if end <= start:
-            # Prefer duration when end would be before start (e.g. same-day clock confusion).
             end = start + timedelta(minutes=_parse_duration_minutes(duration, 60))
     else:
         end = start + timedelta(minutes=_parse_duration_minutes(duration, 60))
@@ -380,38 +464,59 @@ def create_calendar_event(
 def create_travel_calendar(
     origin: str,
     destination: str,
-    start_time: str = "",
-    duration: str = "4 hours",
+    start_time: str,
+    duration: str = "",
     mode: str = "driving",
     notes: str = "",
 ) -> str:
-    """Create a trip calendar event (departure → arrival) as .ics + Google add link.
+    """Create a road-trip calendar event (departure → arrival) as .ics + Google link.
 
-    Use when the user wants to put travel on their calendar: leave origin at
-    start_time, arrive at destination after duration (or known drive time).
+    Duration is taken from live OSRM routing (authoritative for drive/walk/bike).
+    Only if routing fails is the optional duration argument used.
 
     Args:
-        origin: Start place.
-        destination: End place.
-        start_time: Departure time (default today 08:00 if empty).
-        duration: Expected trip length — '4 hours', '90 min', etc.
-        mode: driving / walking / cycling (for title/description only).
-        notes: Extra details to store on the event.
+        origin: Start place (e.g. Mumbai).
+        destination: End place (e.g. Hyderabad).
+        start_time: REQUIRED. Must include day: 'tomorrow 10:00 AM' or
+            '2026-07-30 10:00'. Do not pass only '10 AM' if the user said tomorrow.
+        duration: Optional fallback only — e.g. '8 hours 47 minutes'. Prefer leaving
+            empty so OSRM sets the real length.
+        mode: driving (default), walking, or cycling.
+        notes: Extra details for the event description.
     """
     origin = (origin or "").strip()
     destination = (destination or "").strip()
     if not origin or not destination:
         return "Error: origin and destination are required."
+    if not (start_time or "").strip():
+        return (
+            "Error: start_time is required. Include the day, e.g. "
+            "'tomorrow 10:00 AM' or '2026-07-30 10:00'."
+        )
 
     start = _parse_event_start(start_time)
-    minutes = _parse_duration_minutes(duration, 240)
-    end = start + timedelta(minutes=minutes)
     mode_label = (mode or "driving").strip() or "driving"
+
+    seconds, route_note = _osrm_duration_seconds(origin, destination, mode_label)
+    if seconds is not None and seconds > 0:
+        minutes = max(1, int(round(seconds / 60.0)))
+        duration_source = route_note
+    else:
+        minutes = _parse_duration_minutes(duration, 0)
+        if minutes <= 0:
+            return (
+                f"Error: could not resolve trip duration via routing ({route_note}). "
+                "Pass duration explicitly, e.g. duration='8 hours 47 minutes'."
+            )
+        duration_source = f"fallback duration '{duration}' (OSRM unavailable: {route_note})"
+
+    end = start + timedelta(minutes=minutes)
     title = f"{mode_label.title()}: {origin} → {destination}"
     description_parts = [
         f"Travel ({mode_label}) from {origin} to {destination}.",
-        f"Estimated duration: {minutes} minutes.",
-        "Times are local to the machine that created this file.",
+        f"Departure: {start.strftime('%Y-%m-%d %H:%M')} (local).",
+        f"Arrival: {end.strftime('%Y-%m-%d %H:%M')} (local).",
+        f"Duration used: {minutes} minutes — {duration_source}.",
     ]
     if (notes or "").strip():
         description_parts.append(notes.strip())
@@ -440,26 +545,29 @@ def list_saved_calendar_files() -> str:
     return "\n".join(lines)
 
 
-def build_agent():
-    llm = ChatOllama(
-        model="qwen2.5:7b",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[create_calendar_event, create_travel_calendar, list_saved_calendar_files],
         system_prompt=(
             "You are a travel calendar assistant. When the user wants to add something "
             "to their calendar (trip, departure, meeting related to travel, reminder), "
-            "always call a tool — never invent file paths.\n"
-            "- Single event with title/time → create_calendar_event.\n"
-            "- Trip between two places → create_travel_calendar (include origin, destination, "
-            "start_time, and duration or travel time if known).\n"
+            "always call a tool — never invent file paths or trip durations.\n"
+            "- Road trip A→B → create_travel_calendar. REQUIRED start_time must include "
+            "the day ('tomorrow 10:00 AM' or 'YYYY-MM-DD HH:MM'). Leave duration empty "
+            "so OSRM sets the real drive time; do not invent 4h/6h.\n"
+            "- Single non-route event → create_calendar_event with accurate duration.\n"
             "- Asking what was saved → list_saved_calendar_files.\n"
             "After tools return, explain clearly: (1) path to the .ics file, "
             "(2) that the Google Calendar add page was opened in the browser — "
-            "user should click Save, (3) the quick-add link if needed, "
+            "user should click Save (GUI: use the Add to Calendar button instead), "
+            "(3) the exact local start/end datetimes from the tool, "
             "(4) whether Google API push happened. "
             "Use prior turns for places/times (e.g. 'add that trip to my calendar')."
         ),

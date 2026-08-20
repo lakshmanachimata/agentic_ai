@@ -1,8 +1,8 @@
 """
-LangChain agent (ReAct-style graph): Ollama (qwen2.5:7b) + worldwide weather via wttr.in.
+LangChain agent (ReAct-style graph): Ollama (qwen3.5:latest) + worldwide weather via wttr.in.
 
 Requires Ollama running locally with the model pulled:
-  ollama pull qwen2.5:7b
+  ollama pull qwen3.5:latest
 
 Interactive mode keeps session memory across turns (``/reset`` clears it).
 
@@ -23,10 +23,9 @@ from urllib.parse import quote
 import httpx
 from langchain_core.tools import tool
 from langchain.agents import create_agent
-from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 
-from agent_common import invoke_agent, run_interactive
+from agent_common import invoke_agent, make_chat_ollama, run_interactive
 
 
 def _wttr_value(obj: Any) -> str:
@@ -84,12 +83,13 @@ def get_weather(location: str) -> str:
         return f"Could not parse weather response: {e}"
 
 
-def build_agent():
-    llm = ChatOllama(
-        model="qwen2.5:7b",
-        base_url="http://127.0.0.1:11434",
-        temperature=0.2,
-    )
+def build_agent(
+    *,
+    model: str | None = None,
+    temperature: float | None = None,
+    top_k: int | None = None,
+):
+    llm = make_chat_ollama(model=model, temperature=temperature, top_k=top_k)
     return create_agent(
         llm,
         tools=[get_weather],
