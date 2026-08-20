@@ -27,6 +27,27 @@ def test_orchestrator_specialist_tools(monkeypatch):
     assert by_name["ask_restaurant_specialist"].invoke({"query": " eat "}) == "r:rg:eat"
     assert by_name["ask_calendar_specialist"].invoke({"query": " add "}) == "c:cg:add"
 
+    travel_out = by_name["ask_travel_specialist"].invoke(
+        {
+            "query": "plan the drive",
+            "origin": "Mumbai",
+            "destination": "Hyderabad",
+            "start_time": "tomorrow 10:00 AM",
+        }
+    )
+    assert "Mumbai" in travel_out
+    assert "Typed trip state" in travel_out
+    cal_out = by_name["ask_calendar_specialist"].invoke(
+        {
+            "query": "add that trip",
+            "origin": "Mumbai",
+            "destination": "Hyderabad",
+            "start_time": "tomorrow 10:00 AM",
+        }
+    )
+    assert "Typed trip state" in cal_out
+    assert "create_travel_calendar" in cal_out
+
 
 def test_orchestrator_run_and_main(monkeypatch):
     monkeypatch.setattr(oa, "invoke_agent", lambda *_a, **_k: "ok")

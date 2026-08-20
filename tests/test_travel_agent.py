@@ -63,6 +63,10 @@ def test_get_travel_time_paths(monkeypatch):
     )
     assert "Estimated time" in ok
     assert "on foot" in ok
+    import trip_state as ts
+
+    assert ts.get_trip().duration_s == 3600
+    assert ts.get_trip().mode == "walking"
 
     bike = ta.get_travel_time.invoke(
         {"origin": "Paris", "destination": "Lyon", "mode": "cycling"}

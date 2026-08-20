@@ -42,6 +42,7 @@ from route_common import (
     parse_start_time,
 )
 from travel_agent import OSRM_URL, USER_AGENT as TRAVEL_HTTP_USER_AGENT, _geocode, _normalize_profile
+from trip_state import fill_route_args
 
 OVERPASS_URLS = (
     "https://overpass-api.de/api/interpreter",
@@ -475,6 +476,7 @@ def find_places_to_eat_along_route(
 
     Data is incomplete by nature; confirm before visiting.
     """
+    origin, destination, mode, _start = fill_route_args(origin, destination, mode)
     cap = max(1, min(int(max_results), 20))
     buf = max(800, min(int(exclude_endpoints_meters), 5000))
     search_r = max(400, min(int(intermediate_search_radius_meters), 1000))
@@ -827,6 +829,9 @@ def find_restaurants_at_towns_on_route(
         search_radius_meters: Overpass radius around each town center (400–1000).
         cuisine: Optional OSM cuisine filter.
     """
+    origin, destination, mode, start_time = fill_route_args(
+        origin, destination, mode, start_time
+    )
     cap_towns = max(1, min(int(max_towns), 6))
     cap_each = max(1, min(int(per_town_max), 6))
     search_r = max(400, min(int(search_radius_meters), 1000))

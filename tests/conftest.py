@@ -42,6 +42,15 @@ def _no_network_sleep(monkeypatch):
     monkeypatch.setattr(route_common.time, "sleep", lambda *_a, **_k: None)
 
 
+@pytest.fixture(autouse=True)
+def _reset_trip_state():
+    import trip_state as ts
+
+    ts.clear_all_trips()
+    yield
+    ts.clear_all_trips()
+
+
 @pytest.fixture
 def reset_langsmith_config():
     """Allow tests to re-run configure_langsmith() against a fresh env."""

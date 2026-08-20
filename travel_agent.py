@@ -41,6 +41,7 @@ from route_common import (
     parse_start_time,
     weather_summary_at_time,
 )
+from trip_state import fill_route_args, update_trip
 
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OSRM_URL = "https://router.project-osrm.org/route/v1"
@@ -86,6 +87,7 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
 
     Uses OpenStreetMap geocoding and OSRM open routing (no API key).
     """
+    origin, destination, mode, _start = fill_route_args(origin, destination, mode)
     profile = _normalize_profile(mode)
     if profile not in ("driving", "walking", "cycling"):
         return (
@@ -131,6 +133,16 @@ def get_travel_time(origin: str, destination: str, mode: str = "driving") -> str
     except (KeyError, IndexError, TypeError, ValueError) as e:
         return f"Could not parse routing response: {e}"
 
+    update_trip(
+        origin=origin,
+        destination=destination,
+        origin_label=origin_res["label"],
+        dest_label=dest_res["label"],
+        mode=str(profile),
+        duration_s=duration_s,
+        distance_m=distance_m,
+    )
+
     mode_label = {"driving": "by car", "walking": "on foot", "cycling": "by bicycle"}[profile]
     lines = [
         f"From: {origin_res['label']}",
@@ -162,6 +174,9 @@ def get_route_stops_with_weather(
     Excludes listing origin/destination as intermediate towns; shows estimated arrival at each town
     and wttr.in forecast for that time. Also shows total trip time and weather at destination on arrival.
     """
+    origin, destination, mode, start_time = fill_route_args(
+        origin, destination, mode, start_time
+    )
     profile = _normalize_profile(mode)
     if profile not in ("driving", "walking", "cycling"):
         return f"Unsupported mode '{mode}'. Use driving, walking, or cycling."
@@ -175,6 +190,17 @@ def get_route_stops_with_weather(
         route: OsrmRoute = route_result
 
         stops = discover_intermediate_stops(client, route, depart, max_towns=6)
+
+    update_trip(
+        origin=origin,
+        destination=destination,
+        origin_label=route.origin_label,
+        dest_label=route.dest_label,
+        mode=str(profile),
+        start_time=start_time,
+        duration_s=route.duration_s,
+        distance_m=route.distance_m,
+    )
 
     arrive_dest = depart + timedelta(seconds=route.duration_s)
     mode_label = {"driving": "by car", "walking": "on foot", "cycling": "by bicycle"}[profile]

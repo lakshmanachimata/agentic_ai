@@ -44,6 +44,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from agent_common import invoke_agent, make_chat_ollama, run_interactive
 from route_common import fetch_osrm_route, format_duration, parse_start_time
 from tracing_common import traceable
+from trip_state import fill_route_args, get_trip, update_trip
 
 import httpx
 
@@ -169,6 +170,7 @@ def _osrm_duration_seconds(origin: str, destination: str, mode: str) -> tuple[fl
 
     if isinstance(route, str):
         return None, route
+    update_trip(duration_s=float(route.duration_s), distance_m=float(route.distance_m))
     return float(route.duration_s), (
         f"OSRM {mode or 'driving'}: {format_duration(route.duration_s)} "
         f"({route.distance_m / 1000:.1f} km)"
@@ -488,6 +490,9 @@ def create_travel_calendar(
         mode: driving (default), walking, or cycling.
         notes: Extra details for the event description.
     """
+    origin, destination, mode, start_time = fill_route_args(
+        origin, destination, mode, start_time
+    )
     origin = (origin or "").strip()
     destination = (destination or "").strip()
     if not origin or not destination:
@@ -502,9 +507,16 @@ def create_travel_calendar(
     mode_label = (mode or "driving").strip() or "driving"
 
     seconds, route_note = _osrm_duration_seconds(origin, destination, mode_label)
+    trip = get_trip()
     if seconds is not None and seconds > 0:
         minutes = max(1, int(round(seconds / 60.0)))
         duration_source = route_note
+    elif trip.duration_s and trip.duration_s > 0:
+        minutes = max(1, int(round(trip.duration_s / 60.0)))
+        duration_source = (
+            f"typed trip state: {format_duration(trip.duration_s)} "
+            f"(OSRM unavailable: {route_note})"
+        )
     else:
         minutes = _parse_duration_minutes(duration, 0)
         if minutes <= 0:
@@ -565,7 +577,8 @@ def build_agent(
             "always call a tool — never invent file paths or trip durations.\n"
             "- Road trip A→B → create_travel_calendar. REQUIRED start_time must include "
             "the day ('tomorrow 10:00 AM' or 'YYYY-MM-DD HH:MM'). Leave duration empty "
-            "so OSRM sets the real drive time; do not invent 4h/6h.\n"
+            "so OSRM or typed trip state (duration_s) sets the real drive time; do not invent 4h/6h.\n"
+            "If the prompt includes Typed trip state, copy origin/destination/start_time from it.\n"
             "- Single non-route event → create_calendar_event with accurate duration.\n"
             "- Asking what was saved → list_saved_calendar_files.\n"
             "After tools return, explain clearly: (1) path to the .ics file, "

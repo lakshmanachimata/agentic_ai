@@ -38,6 +38,7 @@ from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
 from travel_agent import build_agent as build_travel
 from weather_agent import build_agent as build_weather
+from trip_state import clear_trip
 
 ClientBuilder = Callable[..., Any]
 
@@ -318,6 +319,7 @@ def main() -> None:
             help="Default is Orchestrator.",
         )
         if selected != st.session_state.client_key:
+            clear_trip(st.session_state.thread_id)
             st.session_state.client_key = selected
             st.session_state.thread_id = str(uuid.uuid4())
             get_graph.clear()
@@ -367,6 +369,7 @@ def main() -> None:
         )
 
         if st.button("Clear chat", use_container_width=True):
+            clear_trip(st.session_state.thread_id)
             st.session_state.messages = []
             st.session_state.invites = []
             st.session_state.thread_id = str(uuid.uuid4())

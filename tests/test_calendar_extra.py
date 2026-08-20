@@ -355,6 +355,32 @@ def test_create_travel_calendar_osrm_and_fallback(tmp_path, monkeypatch):
     assert "fallback" in fallback.lower() or "2" in fallback
 
 
+def test_create_travel_calendar_uses_typed_trip_state(tmp_path, monkeypatch):
+    import trip_state as ts
+
+    monkeypatch.setattr(calendar_agent, "EVENTS_DIR", tmp_path)
+    monkeypatch.setattr(calendar_agent, "LATEST_INVITE_PATH", tmp_path / "latest.json")
+    monkeypatch.setattr(calendar_agent, "_open_calendar_url", lambda url: "ok")
+    monkeypatch.setattr(calendar_agent, "_try_google_api_insert", lambda **_k: None)
+    monkeypatch.setattr(
+        calendar_agent,
+        "_osrm_duration_seconds",
+        lambda *_a, **_k: (None, "down"),
+    )
+    ts.update_trip(
+        origin="Mumbai",
+        destination="Pune",
+        start_time="2026-08-21 09:00",
+        duration_s=7200,
+    )
+    out = calendar_agent.create_travel_calendar.invoke(
+        {"origin": "", "destination": "", "start_time": ""}
+    )
+    assert "typed trip state" in out.lower()
+    assert "Mumbai" in out
+    assert "11:00" in out
+
+
 def test_calendar_build_run_main(monkeypatch):
     monkeypatch.setattr(calendar_agent, "make_chat_ollama", lambda **_k: "llm")
     monkeypatch.setattr(calendar_agent, "create_agent", lambda *_a, **_k: "graph")

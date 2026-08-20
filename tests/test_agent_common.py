@@ -89,6 +89,64 @@ def test_invoke_agent_named_run_and_tokens(monkeypatch):
     assert usage["by_agent"]["weather"]["input_tokens"] == 12
 
 
+def test_invoke_agent_attaches_trip_after_specialist(monkeypatch):
+    import trip_state as ts
+    from contextlib import contextmanager
+
+    monkeypatch.delenv("AGENTIC_AI_GUI", raising=False)
+    captured: dict = {}
+
+    class Run:
+        def set(self, **kwargs):
+            captured["set"] = kwargs
+
+    @contextmanager
+    def fake_trace(name, **kwargs):
+        captured["inputs"] = kwargs.get("inputs")
+        captured["tags"] = kwargs.get("tags")
+        yield Run()
+
+    monkeypatch.setattr(agent_common, "agent_trace", fake_trace)
+
+    class FakeGraph:
+        def invoke(self, payload, config):
+            ts.update_trip(
+                origin="Mumbai",
+                destination="Hyderabad",
+                start_time="tomorrow 10:00 AM",
+                duration_s=31620,
+            )
+            return {"messages": [AIMessage(content="8 hrs 47 min")]}
+
+    reply = agent_common.invoke_agent(
+        FakeGraph(),
+        "plan the drive",
+        thread_id="sess-ls",
+        agent_name="travel",
+    )
+    assert reply == "8 hrs 47 min"
+    trip = captured["set"]["outputs"]["trip"]
+    assert trip["origin"] == "Mumbai"
+    assert trip["duration_s"] == 31620
+    assert trip["trip_id"] == "sess-ls"
+    assert captured["set"]["metadata"]["trip"]["start_time"] == "tomorrow 10:00 AM"
+
+    class FollowUp:
+        def invoke(self, *_a, **_k):
+            return {"messages": [AIMessage(content="added")]}
+
+    follow = agent_common.invoke_agent(
+        FollowUp(),
+        "add that to my calendar",
+        thread_id="sess-ls",
+        agent_name="calendar",
+    )
+    assert follow == "added"
+    assert captured["inputs"]["trip"]["origin"] == "Mumbai"
+    assert captured["inputs"]["trip"]["duration_s"] == 31620
+    assert "trip" in captured["tags"]
+
+
 def test_invoke_agent_gui_skips_token_print(monkeypatch, capsys):
     monkeypatch.setenv("AGENTIC_AI_GUI", "1")
 
@@ -140,3 +198,34 @@ def test_run_interactive_keyboard_interrupt(monkeypatch, capsys):
     agent_common.run_interactive("T", "h.", Graph(), agent_name="weather")
     out = capsys.readouterr().out
     assert "interrupted" in out
+
+
+def test_nested_invoke_inherits_trip_state(monkeypatch):
+    import trip_state as ts
+
+    monkeypatch.delenv("AGENTIC_AI_GUI", raising=False)
+
+    class Inner:
+        def invoke(self, *_a, **_k):
+            ts.update_trip(origin="Mumbai", destination="Hyderabad", duration_s=31620)
+            return {"messages": [AIMessage(content="route ok")]}
+
+    class Outer:
+        def invoke(self, *_a, **_k):
+            inner_reply = agent_common.invoke_agent(Inner(), "inner", agent_name="travel")
+            assert inner_reply == "route ok"
+            assert ts.get_trip().duration_s == 31620
+            return {"messages": [AIMessage(content="done")]}
+
+    assert (
+        agent_common.invoke_agent(
+            Outer(), "plan", thread_id="sess-trip", agent_name="orchestrator"
+        )
+        == "done"
+    )
+    token = ts.begin_trip_scope("sess-trip")
+    try:
+        assert ts.get_trip().duration_s == 31620
+        assert ts.get_trip().origin == "Mumbai"
+    finally:
+        ts.reset_trip_scope(token)

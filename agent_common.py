@@ -18,6 +18,13 @@ from tracing_common import (
     print_tracing_banner,
     usage_from_messages,
 )
+from trip_state import (
+    begin_trip_scope,
+    clear_trip,
+    current_trip_id,
+    reset_trip_scope,
+    snapshot_for_trace,
+)
 
 DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
@@ -68,7 +75,9 @@ def invoke_agent(
     When ``thread_id`` is set, LangGraph merges this turn into the same
     conversation (session memory). When ``thread_id`` is omitted, a new
     ephemeral thread id is used so each call is isolated (e.g. one-shot CLI,
-    or specialist tool calls from the orchestrator).
+    or specialist tool calls from the orchestrator). Nested specialist calls
+    inherit the parent's typed trip state even though they get a fresh
+    LangGraph thread.
 
     ``agent_name`` becomes the LangSmith run name so orchestrator vs weather /
     travel / restaurants / calendar hops are easy to filter.
@@ -78,6 +87,9 @@ def invoke_agent(
         return ""
 
     tid = thread_id if thread_id is not None else uuid.uuid4().hex
+    trip_token = None
+    if current_trip_id() is None:
+        trip_token = begin_trip_scope(tid)
     gui = os.environ.get("AGENTIC_AI_GUI", "").strip().lower() in (
         "1",
         "true",
@@ -87,7 +99,13 @@ def invoke_agent(
     run_tags = [agent_name, "gui" if gui else "cli"]
     if tags:
         run_tags.extend(tags)
+    trip_before = snapshot_for_trace()
+    trip_snap = {k: v for k, v in trip_before.items() if v not in (None, "", "driving")}
     run_meta = {"agent": agent_name, "thread_id": tid, **(metadata or {})}
+    if trip_snap:
+        run_meta["trip"] = trip_snap
+        if "trip" not in run_tags:
+            run_tags.append("trip")
     config: dict[str, Any] = {
         "configurable": {"thread_id": tid},
         "run_name": agent_name,
@@ -100,7 +118,7 @@ def invoke_agent(
     is_root = begin_usage_span()
     with agent_trace(
         agent_name,
-        inputs={"question": q, "thread_id": tid},
+        inputs={"question": q, "thread_id": tid, **({"trip": trip_snap} if trip_snap else {})},
         tags=run_tags,
         metadata=run_meta,
     ) as run:
@@ -115,6 +133,7 @@ def invoke_agent(
                 run=run,
                 reply=reply,
                 model=DEFAULT_OLLAMA_MODEL,
+                trip=snapshot_for_trace(),
             )
         except Exception:
             finish_usage_span(
@@ -123,8 +142,12 @@ def invoke_agent(
                 run=run,
                 reply="",
                 model=DEFAULT_OLLAMA_MODEL,
+                trip=snapshot_for_trace(),
             )
             raise
+        finally:
+            if trip_token is not None:
+                reset_trip_scope(trip_token)
     if is_root and not gui and usage.get("llm_calls"):
         print(format_token_usage(usage), file=sys.stderr)
     return reply
@@ -153,6 +176,7 @@ def run_interactive(
         if not q:
             continue
         if q.lower() in ("/reset", "/clear", "reset"):
+            clear_trip(session_tid)
             session_tid = str(uuid.uuid4())
             print("(session cleared — new thread)\n")
             continue

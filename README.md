@@ -177,6 +177,13 @@ If `LANGSMITH_API_KEY` is set, tracing turns on automatically. CLI prints a one-
 
 Each agent span records **token usage** from Ollama (`prompt_eval_count` / `eval_count`): input, output, total, and LLM-call count. The orchestrator trace rolls up nested specialists (weather + travel + …). The same line is printed in the CLI and under Streamlit replies.
 
+**Typed trip state** is attached on the same spans so you can see what travel wrote and calendar read:
+
+- Agent span **inputs** include `trip` when a route is already in session (e.g. a follow-up “add that to my calendar”).
+- Agent span **outputs / metadata** include `trip` after tools run: `origin`, `destination`, `start_time`, `duration_s`, `duration_human`, `trip_id`. That is the snapshot to inspect — travel writes `duration_s` during the turn, so the output is richer than the input.
+- HTTP spans (Nominatim, OSRM, wttr, Overpass) also get `trip` via `drop_http_client`.
+- Filter in LangSmith with the `trip` tag when a route is in state.
+
 Set `LANGSMITH_TRACING=false` to disable without removing the key.
 
 ## 9) Tests and coverage
@@ -200,8 +207,9 @@ Unit tests cover parsers, tracing/token rollup, calendar `.ics` helpers, restaur
 
 - `run_agents.py` - main CLI launcher
 - `streamlit_app.py` - Streamlit GUI (query + calendar invite card)
-- `tracing_common.py` - LangSmith tracing (env + named spans)
+- `tracing_common.py` - LangSmith tracing (env + named spans + trip state on runs)
 - `orchestrator_agent.py` - routes to specialists
+- `trip_state.py` - typed trip fields (`origin`, `duration_s`, `start_time`) shared across specialist hops and LangSmith
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup
 - `restaurant_agent.py` - restaurant tools

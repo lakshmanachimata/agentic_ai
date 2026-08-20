@@ -666,7 +666,7 @@
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
         <a href="#calendar">9. Travel calendar<small>OSRM duration · tomorrow dates · GUI Save</small></a>
         <a href="#gui">10. Streamlit GUI<small>Chat UI · model / temp / top-k · tokens</small></a>
-        <a href="#langsmith">11. LangSmith<small>Named traces · token rollup · HTTP spans</small></a>
+        <a href="#langsmith">11. LangSmith<small>Named traces · tokens · trip state</small></a>
         <a href="#config">12. Config &amp; commands<small>CLI + streamlit run + .env</small></a>
         <a href="#files">13. File map<small>What to read first</small></a>
       </div>
@@ -791,7 +791,7 @@
             <tr>
               <td>Observability</td>
               <td><code>langsmith</code> → <code>tracing_common.py</code></td>
-              <td>Named traces + Ollama token counts (input / output / total). On when <code>LANGSMITH_API_KEY</code> is set</td>
+              <td>Named traces, token counts, and typed trip fields on spans. On when <code>LANGSMITH_API_KEY</code> is set</td>
             </tr>
             <tr>
               <td>Not used</td>
@@ -912,7 +912,7 @@ Orchestrator (create_agent + MemorySaver + make_chat_ollama)
 
 LLM params (model, temperature, top_k) apply to orchestrator + all specialists
 Each agent’s “brain” = ChatOllama deciding tool calls
-LangSmith (tracing_common): named spans + token rollup when LANGSMITH_API_KEY is set</pre>
+LangSmith (tracing_common): named spans + token rollup + trip state when LANGSMITH_API_KEY is set</pre>
       </div>
     </section>
 
@@ -1014,13 +1014,13 @@ LangSmith (tracing_common): named spans + token rollup when LANGSMITH_API_KEY is
           <div>
             <strong>Final answer</strong>
             <p>LLM writes an <code>AIMessage</code> (with Ollama <code>usage_metadata</code>).
-            <code>extract_assistant_reply</code> returns the text; <code>finish_usage_span</code> attaches tokens to the LangSmith run.</p>
+            <code>extract_assistant_reply</code> returns the text; <code>finish_usage_span</code> attaches tokens and trip state to the LangSmith run.</p>
           </div>
         </li>
       </ol>
 
       <h3>The tiny “glue” file: <code>agent_common.py</code></h3>
-<pre><span class="tok-dim"># One turn — named LangSmith span + token rollup</span>
+<pre><span class="tok-dim"># One turn — named LangSmith span + tokens + trip</span>
 tid = thread_id <span class="tok-green">or</span> uuid.uuid4().hex
 config = {
     <span class="tok-amber">"configurable"</span>: {<span class="tok-amber">"thread_id"</span>: tid},
@@ -1030,7 +1030,7 @@ config = {
 <span class="tok-green">with</span> agent_trace(agent_name, …) <span class="tok-green">as</span> run:
     result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(content=q)]}, config)
     usage = usage_from_messages(result[<span class="tok-amber">"messages"</span>])
-    finish_usage_span(usage, agent_name=agent_name, run=run)
+    finish_usage_span(usage, agent_name=agent_name, run=run, trip=snapshot_for_trace())
 <span class="tok-green">return</span> extract_assistant_reply(result[<span class="tok-amber">"messages"</span>])</pre>
 
       <p>
@@ -1045,8 +1045,10 @@ config = {
       <h2>How agents communicate</h2>
       <p class="lead">
         There is <strong>no message bus, no shared queue, no AutoGen group chat</strong>.
-        Communication is <strong>agents-as-tools</strong>: the orchestrator LLM calls a tool whose body
-        runs another agent to completion and returns a string.
+        Communication is <strong>agents-as-tools</strong> plus <strong>typed trip state</strong>
+        (<code>trip_state.py</code>): the orchestrator LLM calls a specialist, and structured
+        fields (<code>origin</code>, <code>destination</code>, <code>start_time</code>, <code>duration_s</code>)
+        are stored for the session so calendar/restaurants do not re-guess drive time from English.
       </p>
 
       <div class="panel amber">
@@ -1066,9 +1068,14 @@ restaurant_graph = build_restaurant_agent(**llm_kwargs)
 calendar_graph = build_calendar_agent(**llm_kwargs)
 
 <span class="tok-sky">@tool</span>
-<span class="tok-green">def</span> ask_calendar_specialist(query: str) -> str:
-    <span class="tok-amber">"""Delegate to the travel-calendar specialist…"""</span>
-    <span class="tok-green">return</span> run_calendar_query(calendar_graph, query.strip())
+<span class="tok-green">def</span> ask_travel_specialist(query, origin="", destination="", mode="driving", start_time="") -> str:
+    update_trip(origin=origin, destination=destination, mode=mode, start_time=start_time)
+    <span class="tok-green">return</span> run_travel_query(travel_graph, compose_specialist_query(query, specialist="travel"))
+
+<span class="tok-sky">@tool</span>
+<span class="tok-green">def</span> ask_calendar_specialist(query, origin="", destination="", start_time="", mode="") -> str:
+    update_trip(origin=origin, destination=destination, start_time=start_time, mode=mode)
+    <span class="tok-green">return</span> run_calendar_query(calendar_graph, compose_specialist_query(query, specialist="calendar"))
 
 create_agent(make_chat_ollama(**llm_kwargs), tools=[
     ask_weather_specialist,
@@ -1088,6 +1095,9 @@ create_agent(make_chat_ollama(**llm_kwargs), tools=[
         <strong>Memory boundary:</strong> Specialist <code>run_query</code> calls omit <code>thread_id</code>,
         so each delegation gets a <strong>fresh ephemeral thread</strong>.
         Session memory lives on the <strong>orchestrator</strong> conversation, not inside nested specialist hops.
+        <strong>Typed trip state</strong> is the exception: it is keyed by the orchestrator <code>thread_id</code>
+        so a later <code>ask_calendar_specialist</code> can read <code>duration_s</code> that travel just wrote.
+        The same snapshot is written onto LangSmith span outputs as <code>trip</code>.
       </div>
 
       <h3>You can also skip the orchestrator</h3>
@@ -1504,7 +1514,8 @@ streamlit run streamlit_app.py</pre>
       <p class="lead">
         <code>tracing_common.py</code> turns every user turn into a named LangSmith trace:
         <strong>orchestrator → specialist → tool → HTTP API</strong>, with
-        <strong>Ollama token counts</strong> on each agent span.
+        <strong>Ollama token counts</strong> and <strong>typed trip state</strong>
+        (<code>origin</code>, <code>duration_s</code>, <code>start_time</code>) on each agent span.
       </p>
 
       <div class="callout">
@@ -1537,6 +1548,11 @@ streamlit run streamlit_app.py</pre>
           <h4>usage_metadata</h4>
           <p>From ChatOllama <code>prompt_eval_count</code> / <code>eval_count</code>. Orchestrator rollup includes nested specialists (<code>by_agent</code>).</p>
         </article>
+        <article>
+          <p class="role">Trip</p>
+          <h4>typed trip state</h4>
+          <p><code>trip_state.snapshot_for_trace()</code> on span inputs (before) and outputs/metadata (after). HTTP <code>@traceable</code> helpers get the same <code>trip</code> object. Tag: <code>trip</code>.</p>
+        </article>
       </div>
 
       <h3>What one orchestrator query looks like in LangSmith</h3>
@@ -1544,7 +1560,7 @@ streamlit run streamlit_app.py</pre>
         <div class="seq">
           <div class="seq-row">
             <div class="seq-who">1 · Root</div>
-            <div class="seq-what"><code>orchestrator</code> chain — question in, reply + <code>token_summary</code> out. Tags: <code>orchestrator</code>, <code>cli</code> or <code>gui</code>.</div>
+            <div class="seq-what"><code>orchestrator</code> chain — question in, reply + <code>token_summary</code> + <code>trip</code> out. Tags: <code>orchestrator</code>, <code>cli</code> or <code>gui</code>, and <code>trip</code> when a route is in state.</div>
           </div>
           <div class="seq-row">
             <div class="seq-who">2 · LLM</div>
@@ -1566,6 +1582,10 @@ streamlit run streamlit_app.py</pre>
             <div class="seq-who">6 · Tokens</div>
             <div class="seq-what">Root span: <code>input_tokens</code> + <code>output_tokens</code> + <code>total_tokens</code> + <code>llm_calls</code>, plus <code>by_agent</code> breakdown. CLI prints the same line; GUI shows it as a caption under the reply.</div>
           </div>
+          <div class="seq-row">
+            <div class="seq-who">7 · Trip</div>
+            <div class="seq-what">Outputs/metadata <code>trip</code>: <code>origin</code>, <code>destination</code>, <code>start_time</code>, <code>duration_s</code>, <code>duration_human</code>, <code>trip_id</code>. Travel writes duration; calendar/restaurants read the same object. HTTP spans copy it via <code>drop_http_client</code>.</div>
+          </div>
         </div>
       </div>
 
@@ -1573,14 +1593,23 @@ streamlit run streamlit_app.py</pre>
 <pre><span class="tok-sky">configure_langsmith</span>()          <span class="tok-dim"># load .env; enable if API key present</span>
 <span class="tok-sky">agent_trace</span>(<span class="tok-amber">"orchestrator"</span>, …)  <span class="tok-dim"># parent span for one user turn</span>
 <span class="tok-sky">usage_from_messages</span>(messages)   <span class="tok-dim"># sum Ollama usage_metadata / eval_count</span>
-<span class="tok-sky">finish_usage_span</span>(…)            <span class="tok-dim"># attach usage_metadata; roll up to parent</span>
-<span class="tok-sky">@traceable</span>(name=<span class="tok-amber">"osrm.fetch_route"</span>)  <span class="tok-dim"># HTTP helpers in route_common / calendar / restaurants</span></pre>
+<span class="tok-sky">finish_usage_span</span>(…)            <span class="tok-dim"># attach usage_metadata + trip; roll up to parent</span>
+<span class="tok-sky">snapshot_for_trace</span>()            <span class="tok-dim"># origin / duration_s / start_time for LangSmith</span>
+<span class="tok-sky">@traceable</span>(name=<span class="tok-amber">"osrm.fetch_route"</span>)  <span class="tok-dim"># HTTP helpers; process_inputs adds trip</span></pre>
 
       <div class="callout">
         <strong>Token source:</strong> Ollama reports <code>prompt_eval_count</code> (input) and
         <code>eval_count</code> (output) on each generation. ChatOllama copies that onto
         <code>AIMessage.usage_metadata</code>. Nested specialist turns are summed into the
         orchestrator span so you can see the full cost of “plan trip + add to calendar”.
+      </div>
+
+      <div class="callout">
+        <strong>Trip on traces:</strong> <code>finish_usage_span</code> writes
+        <code>trip</code> onto the run’s outputs and metadata <em>after</em> tools
+        (that is when <code>duration_s</code> exists). Inputs show trip only if the
+        session already had a route. HTTP <code>@traceable</code> helpers attach the
+        same snapshot so an <code>osrm.fetch_route</code> span is filterable by origin.
       </div>
     </section>
 
@@ -1591,7 +1620,7 @@ streamlit run streamlit_app.py</pre>
       <p>
         CLI uses defaults from <code>agent_common</code>. Streamlit overrides model / temperature / top-k
         from the sidebar. GUI mode sets <code>AGENTIC_AI_GUI=1</code> so calendar does not auto-open.
-        LangSmith traces (and token rollup) turn on when <code>LANGSMITH_API_KEY</code> is in the environment or <code>.env</code>.
+        LangSmith traces (token rollup + typed trip state) turn on when <code>LANGSMITH_API_KEY</code> is in the environment or <code>.env</code>.
       </p>
       <div class="panel" style="overflow-x:auto">
         <table>
@@ -1613,6 +1642,7 @@ streamlit run streamlit_app.py</pre>
             <tr><td>LangSmith tracing</td><td>On when <code>LANGSMITH_API_KEY</code> is set (<code>tracing_common.configure_langsmith</code>)</td></tr>
             <tr><td>LangSmith project</td><td><code>agentic-ai</code> (override with <code>LANGSMITH_PROJECT</code>)</td></tr>
             <tr><td>LangSmith tokens</td><td>Per-span <code>usage_metadata</code> from Ollama; orchestrator rollup via <code>by_agent</code></td></tr>
+            <tr><td>LangSmith trip</td><td>Span inputs/outputs/metadata <code>trip</code> from <code>trip_state.snapshot_for_trace()</code>; HTTP spans too</td></tr>
             <tr><td>Disable tracing</td><td><code>LANGSMITH_TRACING=false</code></td></tr>
             <tr><td>Tests</td><td><code>pytest</code> + <code>pytest-cov</code> (min 90% coverage; <code>requirements-dev.txt</code> / <code>htmlcov/</code>)</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
@@ -1667,11 +1697,11 @@ pytest</pre>
         </div>
         <div class="file-row">
           <div class="name">agent_common.py</div>
-          <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code> (named traces + tokens), <code>run_interactive</code></div>
+          <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code> (named traces + tokens + trip), <code>run_interactive</code></div>
         </div>
         <div class="file-row">
           <div class="name">tracing_common.py</div>
-          <div class="desc">LangSmith enable/.env, named spans, HTTP <code>@traceable</code>, token rollup (<code>usage_metadata</code>)</div>
+          <div class="desc">LangSmith enable/.env, named spans, HTTP <code>@traceable</code>, token rollup, trip state on runs</div>
         </div>
         <div class="file-row">
           <div class="name">orchestrator_agent.py</div>
@@ -1692,6 +1722,10 @@ pytest</pre>
         <div class="file-row">
           <div class="name">calendar_agent.py</div>
           <div class="desc">OSRM duration + day-aware start + <code>.ics</code> / TEMPLATE URL / CLI auto-open / GUI Add to Calendar</div>
+        </div>
+        <div class="file-row">
+          <div class="name">trip_state.py</div>
+          <div class="desc">Typed trip context (<code>origin</code>, <code>duration_s</code>, <code>start_time</code>) shared orchestrator → specialists and attached to LangSmith traces</div>
         </div>
         <div class="file-row">
           <div class="name">route_common.py</div>
@@ -1729,7 +1763,8 @@ pytest</pre>
         <li><code>streamlit_app.py</code> — GUI entry + sidebar LLM params</li>
         <li><code>run_agents.py</code> — CLI entry + client map</li>
         <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory + traces</li>
-        <li><code>tracing_common.py</code> — LangSmith + token rollup</li>
+        <li><code>tracing_common.py</code> — LangSmith + token rollup + trip state</li>
+        <li><code>trip_state.py</code> — shared origin / duration / start_time (also on traces)</li>
         <li><code>weather_agent.py</code> — full agent pattern</li>
         <li><code>orchestrator_agent.py</code> — multi-agent delegation (params → specialists)</li>
         <li><code>calendar_agent.py</code> — OSRM duration, dates, GUI-aware open</li>
@@ -1753,12 +1788,12 @@ pytest</pre>
    ← one combined answer (+ invite card + token caption in GUI)
 
 Factory:    agent_common.make_chat_ollama(model, temperature, top_k)
-Tracing:    tracing_common + LangSmith (named spans, token rollup)
+Tracing:    tracing_common + LangSmith (named spans, token rollup, trip state)
 Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
 Specialists: weather · travel · restaurants · calendar
 GUI:        streamlit run streamlit_app.py
-Env:        LANGSMITH_API_KEY → traces at smith.langchain.com (project agentic-ai)
+Env:        LANGSMITH_API_KEY → traces at smith.langchain.com (project agentic-ai; tokens + trip)
 Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>

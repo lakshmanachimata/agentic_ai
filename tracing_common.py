@@ -128,7 +128,10 @@ def print_tracing_banner() -> None:
 
 
 def drop_http_client(inputs: dict[str, Any]) -> dict[str, Any]:
-    """Avoid serializing httpx.Client (and shrink OsrmRoute polylines) in traces."""
+    """Avoid serializing httpx.Client (and shrink OsrmRoute polylines) in traces.
+
+    Also attaches typed trip state so HTTP spans show which origin/duration they belong to.
+    """
     out: dict[str, Any] = {}
     for key, value in inputs.items():
         if key == "client":
@@ -143,6 +146,14 @@ def drop_http_client(inputs: dict[str, Any]) -> dict[str, Any]:
             }
             continue
         out[key] = value
+    try:
+        from trip_state import snapshot_for_trace
+
+        trip = snapshot_for_trace()
+        if trip:
+            out["trip"] = trip
+    except Exception:
+        pass
     return out
 
 
@@ -257,8 +268,9 @@ def finish_usage_span(
     run: Any = None,
     reply: str = "",
     model: str | None = None,
+    trip: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Attach tokens to this LangSmith span and roll them up to the parent agent."""
+    """Attach tokens (and trip state) to this LangSmith span; roll up to the parent."""
     stack = _USAGE_STACK.get() or []
     child_usages = stack.pop() if stack else []
     if not stack:
@@ -291,6 +303,7 @@ def finish_usage_span(
     }
     token_line = format_token_usage(combined)
     model_name = (model or os.environ.get("OLLAMA_MODEL") or "").strip() or None
+    trip_payload = {k: v for k, v in (trip or {}).items() if v not in (None, "")}
 
     if run is not None:
         extra_meta: dict[str, Any] = {
@@ -300,27 +313,27 @@ def finish_usage_span(
         }
         if model_name:
             extra_meta["ls_model_name"] = model_name
+        if trip_payload:
+            extra_meta["trip"] = trip_payload
+        outputs: dict[str, Any] = {
+            "reply": (reply or "")[:4000],
+            "usage_metadata": usage_meta,
+            "token_summary": token_line,
+            "tokens": combined,
+        }
+        if trip_payload:
+            outputs["trip"] = trip_payload
         try:
             run.set(
                 usage_metadata=usage_meta,
                 metadata=extra_meta,
-                outputs={
-                    "reply": (reply or "")[:4000],
-                    "usage_metadata": usage_meta,
-                    "token_summary": token_line,
-                    "tokens": combined,
-                },
+                outputs=outputs,
             )
         except Exception:
             try:
                 run.extra.setdefault("metadata", {}).update(extra_meta)
                 run.extra["metadata"]["usage_metadata"] = usage_meta
-                run.outputs = {
-                    "reply": (reply or "")[:4000],
-                    "usage_metadata": usage_meta,
-                    "token_summary": token_line,
-                    "tokens": combined,
-                }
+                run.outputs = outputs
             except Exception:
                 pass
 
@@ -353,6 +366,17 @@ def agent_trace(
 ) -> Iterator[Any]:
     """Named parent span around one user turn (orchestrator or specialist)."""
     configure_langsmith()
+    try:
+        from trip_state import snapshot_for_trace
+
+        trip = snapshot_for_trace()
+        if trip:
+            inputs = {**inputs, "trip": trip}
+            metadata = {**metadata, "trip": trip}
+            if "trip" not in tags:
+                tags = [*tags, "trip"]
+    except Exception:
+        pass
     try:
         from langsmith import trace
     except ImportError:
