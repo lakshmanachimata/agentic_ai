@@ -627,6 +627,7 @@
         <li><a href="#walkthrough">Walkthrough</a></li>
         <li><a href="#calendar">Calendar</a></li>
         <li><a href="#gui">GUI</a></li>
+        <li><a href="#langsmith">LangSmith</a></li>
         <li><a href="#files">Files</a></li>
       </ul>
     </div>
@@ -645,6 +646,7 @@
         <span class="chip">Ollama · selectable model</span>
         <span class="chip">Agents-as-tools</span>
         <span class="chip">Streamlit GUI</span>
+        <span class="chip">LangSmith traces</span>
         <span class="chip">Calendar · OSRM ETA</span>
       </div>
     </header>
@@ -663,9 +665,10 @@
         <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
         <a href="#calendar">9. Travel calendar<small>OSRM duration · tomorrow dates · GUI Save</small></a>
-        <a href="#gui">10. Streamlit GUI<small>Chat UI · model / temp / top-k</small></a>
-        <a href="#config">11. Config &amp; commands<small>CLI + streamlit run</small></a>
-        <a href="#files">12. File map<small>What to read first</small></a>
+        <a href="#gui">10. Streamlit GUI<small>Chat UI · model / temp / top-k · tokens</small></a>
+        <a href="#langsmith">11. LangSmith<small>Named traces · token rollup · HTTP spans</small></a>
+        <a href="#config">12. Config &amp; commands<small>CLI + streamlit run + .env</small></a>
+        <a href="#files">13. File map<small>What to read first</small></a>
       </div>
     </section>
 
@@ -788,7 +791,7 @@
             <tr>
               <td>Observability</td>
               <td><code>langsmith</code> → <code>tracing_common.py</code></td>
-              <td>Named traces: orchestrator → specialist → tool → HTTP. On when <code>LANGSMITH_API_KEY</code> is set</td>
+              <td>Named traces + Ollama token counts (input / output / total). On when <code>LANGSMITH_API_KEY</code> is set</td>
             </tr>
             <tr>
               <td>Not used</td>
@@ -809,6 +812,8 @@
 <span class="tok-green">langchain-core</span><span class="tok-dim">&gt;=0.3.0</span>
 <span class="tok-green">langchain-ollama</span><span class="tok-dim">&gt;=0.2.0</span>
 <span class="tok-green">langgraph</span><span class="tok-dim">&gt;=0.2.0</span>
+<span class="tok-green">langsmith</span><span class="tok-dim">&gt;=0.3.0</span>
+<span class="tok-green">python-dotenv</span><span class="tok-dim">&gt;=1.0.0</span>
 <span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span>
 <span class="tok-green">streamlit</span><span class="tok-dim">&gt;=1.32.0</span>
 
@@ -884,6 +889,7 @@
           <span class="api-pill">calendar_events/*.ics</span>
           <span class="api-pill">Google TEMPLATE URL + open</span>
           <span class="api-pill">Streamlit GUI</span>
+          <span class="api-pill">LangSmith traces + tokens</span>
         </div>
       </div>
 
@@ -905,7 +911,8 @@ Orchestrator (create_agent + MemorySaver + make_chat_ollama)
                                                  (± optional Calendar API)
 
 LLM params (model, temperature, top_k) apply to orchestrator + all specialists
-Each agent’s “brain” = ChatOllama deciding tool calls</pre>
+Each agent’s “brain” = ChatOllama deciding tool calls
+LangSmith (tracing_common): named spans + token rollup when LANGSMITH_API_KEY is set</pre>
       </div>
     </section>
 
@@ -946,7 +953,7 @@ Each agent’s “brain” = ChatOllama deciding tool calls</pre>
 <pre><span class="tok-sky">llm</span> = make_chat_ollama(
     model=model,              <span class="tok-dim"># default qwen3.5:latest</span>
     temperature=temperature,  <span class="tok-dim"># default 0.2</span>
-    top_k=top_k,              <span class="tok-dim"># default 40 (GUI / optional)</span>
+    top_k=top_k,              <span class="tok-dim"># default 10 (GUI / optional)</span>
 )
 <span class="tok-dim"># returns a LangGraph runnable</span>
 <span class="tok-green">return</span> create_agent(
@@ -964,7 +971,7 @@ Each agent’s “brain” = ChatOllama deciding tool calls</pre>
 
       <h3>Temperature &amp; top-k</h3>
       <p>
-        Defaults: temperature <code>0.2</code>, top-k <code>40</code> — good for deterministic tool choice.
+        Defaults: temperature <code>0.2</code>, top-k <code>10</code> — good for deterministic tool choice.
         Streamlit sidebar lets you raise temperature for freer wording or change top-k / model without editing code.
       </p>
     </section>
@@ -1006,16 +1013,24 @@ Each agent’s “brain” = ChatOllama deciding tool calls</pre>
         <li>
           <div>
             <strong>Final answer</strong>
-            <p>LLM writes an <code>AIMessage</code>. <code>extract_assistant_reply</code> returns that last text to the CLI.</p>
+            <p>LLM writes an <code>AIMessage</code> (with Ollama <code>usage_metadata</code>).
+            <code>extract_assistant_reply</code> returns the text; <code>finish_usage_span</code> attaches tokens to the LangSmith run.</p>
           </div>
         </li>
       </ol>
 
       <h3>The tiny “glue” file: <code>agent_common.py</code></h3>
-<pre><span class="tok-dim"># One turn</span>
+<pre><span class="tok-dim"># One turn — named LangSmith span + token rollup</span>
 tid = thread_id <span class="tok-green">or</span> uuid.uuid4().hex
-config = {<span class="tok-amber">"configurable"</span>: {<span class="tok-amber">"thread_id"</span>: tid}}
-result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(content=q)]}, config)
+config = {
+    <span class="tok-amber">"configurable"</span>: {<span class="tok-amber">"thread_id"</span>: tid},
+    <span class="tok-amber">"run_name"</span>: agent_name,   <span class="tok-dim"># orchestrator | weather | travel | …</span>
+    <span class="tok-amber">"tags"</span>: [agent_name, <span class="tok-amber">"cli"</span> <span class="tok-green">or</span> <span class="tok-amber">"gui"</span>],
+}
+<span class="tok-green">with</span> agent_trace(agent_name, …) <span class="tok-green">as</span> run:
+    result = graph.invoke({<span class="tok-amber">"messages"</span>: [HumanMessage(content=q)]}, config)
+    usage = usage_from_messages(result[<span class="tok-amber">"messages"</span>])
+    finish_usage_span(usage, agent_name=agent_name, run=run)
 <span class="tok-green">return</span> extract_assistant_reply(result[<span class="tok-amber">"messages"</span>])</pre>
 
       <p>
@@ -1386,7 +1401,8 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
       <p class="lead">
         <code>streamlit_app.py</code> is a browser chat UI over the same agents.
         Default client is the <strong>orchestrator</strong>. Left sidebar picks agent, LLM model,
-        temperature, and top-k. Calendar events appear as invite cards with an
+        temperature, and top-k. The sidebar also shows <strong>LangSmith</strong> tracing status.
+        Replies include a <strong>token caption</strong>. Calendar events appear as invite cards with an
         <strong>Add to Calendar</strong> button that opens the Google TEMPLATE URL.
       </p>
 
@@ -1394,7 +1410,7 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
         <article>
           <p class="role">Chat</p>
           <h4>Query + reply</h4>
-          <p>Same <code>invoke_agent</code> + session <code>thread_id</code> as the CLI REPL.</p>
+          <p>Same <code>invoke_agent</code> + session <code>thread_id</code> as the CLI REPL. Token line under each reply.</p>
         </article>
         <article>
           <p class="role">Sidebar</p>
@@ -1437,8 +1453,13 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
             </tr>
             <tr>
               <td>Top-k</td>
-              <td><code>40</code></td>
+              <td><code>10</code></td>
               <td>Ollama <code>top_k</code> token sampling limit</td>
+            </tr>
+            <tr>
+              <td>LangSmith</td>
+              <td>sidebar status</td>
+              <td>On when <code>LANGSMITH_API_KEY</code> is set; link to smith.langchain.com</td>
             </tr>
             <tr>
               <td>Clear chat</td>
@@ -1476,13 +1497,101 @@ pip install google-api-python-client google-auth-oauthlib google-auth-httplib2
 streamlit run streamlit_app.py</pre>
     </section>
 
+    <!-- LANGSMITH -->
+    <section id="langsmith">
+      <p class="section-label">Section 11</p>
+      <h2>LangSmith — debug the flow</h2>
+      <p class="lead">
+        <code>tracing_common.py</code> turns every user turn into a named LangSmith trace:
+        <strong>orchestrator → specialist → tool → HTTP API</strong>, with
+        <strong>Ollama token counts</strong> on each agent span.
+      </p>
+
+      <div class="callout">
+        <strong>Enable:</strong> copy <code>.env.example</code> to <code>.env</code> and set
+        <code>LANGSMITH_API_KEY</code>. Tracing turns on automatically (project
+        <code>agentic-ai</code>). Set <code>LANGSMITH_TRACING=false</code> to disable without
+        removing the key. Open traces at
+        <a href="https://smith.langchain.com" target="_blank" rel="noopener">smith.langchain.com</a>.
+      </div>
+
+      <div class="analogy">
+        <article>
+          <p class="role">Parent span</p>
+          <h4>Named agent turn</h4>
+          <p><code>invoke_agent(..., agent_name="orchestrator")</code> → run name
+          <code>orchestrator</code> / <code>weather</code> / <code>travel</code> / <code>restaurants</code> / <code>calendar</code>.</p>
+        </article>
+        <article>
+          <p class="role">Nested</p>
+          <h4>Specialists + tools</h4>
+          <p>Orchestrator tools call specialist <code>run_query</code>, which starts a child span. LangChain also traces each <code>@tool</code>.</p>
+        </article>
+        <article>
+          <p class="role">HTTP</p>
+          <h4>@traceable helpers</h4>
+          <p>Nominatim, OSRM, wttr.in, Overpass, calendar OSRM / .ics / Google URL — visible as retriever/tool spans.</p>
+        </article>
+        <article>
+          <p class="role">Tokens</p>
+          <h4>usage_metadata</h4>
+          <p>From ChatOllama <code>prompt_eval_count</code> / <code>eval_count</code>. Orchestrator rollup includes nested specialists (<code>by_agent</code>).</p>
+        </article>
+      </div>
+
+      <h3>What one orchestrator query looks like in LangSmith</h3>
+      <div class="panel">
+        <div class="seq">
+          <div class="seq-row">
+            <div class="seq-who">1 · Root</div>
+            <div class="seq-what"><code>orchestrator</code> chain — question in, reply + <code>token_summary</code> out. Tags: <code>orchestrator</code>, <code>cli</code> or <code>gui</code>.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">2 · LLM</div>
+            <div class="seq-what">ChatOllama ReAct steps (tool-call then final answer). Each <code>AIMessage</code> carries <code>usage_metadata</code>.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">3 · Tool</div>
+            <div class="seq-what"><code>ask_travel_specialist</code> (and maybe calendar / weather / restaurants) — nested agent graphs.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">4 · Child agent</div>
+            <div class="seq-what">Span named <code>travel</code> (or other specialist). Own LLM calls + tools.</div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">5 · HTTP</div>
+            <div class="seq-what"><code>nominatim.geocode</code> · <code>osrm.fetch_route</code> · <code>wttr.current</code> / <code>wttr.forecast_at_time</code> · <code>overpass.post</code> · <code>calendar.*</code></div>
+          </div>
+          <div class="seq-row">
+            <div class="seq-who">6 · Tokens</div>
+            <div class="seq-what">Root span: <code>input_tokens</code> + <code>output_tokens</code> + <code>total_tokens</code> + <code>llm_calls</code>, plus <code>by_agent</code> breakdown. CLI prints the same line; GUI shows it as a caption under the reply.</div>
+          </div>
+        </div>
+      </div>
+
+      <h3>Key helpers</h3>
+<pre><span class="tok-sky">configure_langsmith</span>()          <span class="tok-dim"># load .env; enable if API key present</span>
+<span class="tok-sky">agent_trace</span>(<span class="tok-amber">"orchestrator"</span>, …)  <span class="tok-dim"># parent span for one user turn</span>
+<span class="tok-sky">usage_from_messages</span>(messages)   <span class="tok-dim"># sum Ollama usage_metadata / eval_count</span>
+<span class="tok-sky">finish_usage_span</span>(…)            <span class="tok-dim"># attach usage_metadata; roll up to parent</span>
+<span class="tok-sky">@traceable</span>(name=<span class="tok-amber">"osrm.fetch_route"</span>)  <span class="tok-dim"># HTTP helpers in route_common / calendar / restaurants</span></pre>
+
+      <div class="callout">
+        <strong>Token source:</strong> Ollama reports <code>prompt_eval_count</code> (input) and
+        <code>eval_count</code> (output) on each generation. ChatOllama copies that onto
+        <code>AIMessage.usage_metadata</code>. Nested specialist turns are summed into the
+        orchestrator span so you can see the full cost of “plan trip + add to calendar”.
+      </div>
+    </section>
+
     <!-- CONFIG -->
     <section id="config">
-      <p class="section-label">Section 11</p>
+      <p class="section-label">Section 12</p>
       <h2>Config, entry points, running it</h2>
       <p>
         CLI uses defaults from <code>agent_common</code>. Streamlit overrides model / temperature / top-k
         from the sidebar. GUI mode sets <code>AGENTIC_AI_GUI=1</code> so calendar does not auto-open.
+        LangSmith traces (and token rollup) turn on when <code>LANGSMITH_API_KEY</code> is in the environment or <code>.env</code>.
       </p>
       <div class="panel" style="overflow-x:auto">
         <table>
@@ -1493,7 +1602,7 @@ streamlit run streamlit_app.py</pre>
             <tr><td>Ollama host</td><td><code>http://127.0.0.1:11434</code></td></tr>
             <tr><td>Default model</td><td><code>qwen3.5:latest</code> (GUI selectable)</td></tr>
             <tr><td>Default temperature</td><td><code>0.2</code> (GUI slider 0–1.5)</td></tr>
-            <tr><td>Default top-k</td><td><code>40</code> (GUI slider 1–100)</td></tr>
+            <tr><td>Default top-k</td><td><code>10</code> (GUI slider 1–100)</td></tr>
             <tr><td>LLM factory</td><td><code>agent_common.make_chat_ollama</code></td></tr>
             <tr><td>Default departure</td><td>today 08:00 if start time omitted (travel tools)</td></tr>
             <tr><td>Travel profiles</td><td><code>driving</code> / <code>walking</code> / <code>cycling</code></td></tr>
@@ -1501,7 +1610,10 @@ streamlit run streamlit_app.py</pre>
             <tr><td>Calendar trip duration</td><td>OSRM via <code>_osrm_duration_seconds</code></td></tr>
             <tr><td>Calendar start_time</td><td>Required; must include day (<code>tomorrow</code> / <code>YYYY-MM-DD</code>)</td></tr>
             <tr><td>GUI flag</td><td><code>AGENTIC_AI_GUI=1</code> — skip calendar auto-open</td></tr>
-            <tr><td>LangSmith</td><td><code>LANGSMITH_API_KEY</code> + project <code>agentic-ai</code> (see <code>.env.example</code>)</td></tr>
+            <tr><td>LangSmith tracing</td><td>On when <code>LANGSMITH_API_KEY</code> is set (<code>tracing_common.configure_langsmith</code>)</td></tr>
+            <tr><td>LangSmith project</td><td><code>agentic-ai</code> (override with <code>LANGSMITH_PROJECT</code>)</td></tr>
+            <tr><td>LangSmith tokens</td><td>Per-span <code>usage_metadata</code> from Ollama; orchestrator rollup via <code>by_agent</code></td></tr>
+            <tr><td>Disable tracing</td><td><code>LANGSMITH_TRACING=false</code></td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
         </table>
@@ -1512,6 +1624,10 @@ streamlit run streamlit_app.py</pre>
 python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
 ollama pull qwen3.5:latest
+
+<span class="tok-dim"># LangSmith (optional — debug traces + tokens)</span>
+cp .env.example .env
+<span class="tok-dim"># set LANGSMITH_API_KEY=lsv2_pt_…</span>
 
 <span class="tok-dim"># Streamlit GUI (recommended for demos)</span>
 streamlit run streamlit_app.py
@@ -1533,12 +1649,12 @@ python orchestrator_agent.py</pre>
 
     <!-- FILES -->
     <section id="files">
-      <p class="section-label">Section 12</p>
+      <p class="section-label">Section 13</p>
       <h2>Project files — what each one does</h2>
       <div class="files">
         <div class="file-row">
           <div class="name">streamlit_app.py</div>
-          <div class="desc">Streamlit GUI — chat, sidebar agent/LLM params, calendar invite + Add to Calendar</div>
+          <div class="desc">Streamlit GUI — chat, sidebar agent/LLM params, calendar invite, token captions, LangSmith status</div>
         </div>
         <div class="file-row">
           <div class="name">run_agents.py</div>
@@ -1546,11 +1662,11 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">agent_common.py</div>
-          <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code>, <code>run_interactive</code></div>
+          <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code> (named traces + tokens), <code>run_interactive</code></div>
         </div>
         <div class="file-row">
           <div class="name">tracing_common.py</div>
-          <div class="desc">LangSmith setup + named spans for agent turns and HTTP helpers</div>
+          <div class="desc">LangSmith enable/.env, named spans, HTTP <code>@traceable</code>, token rollup (<code>usage_metadata</code>)</div>
         </div>
         <div class="file-row">
           <div class="name">orchestrator_agent.py</div>
@@ -1574,7 +1690,7 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">route_common.py</div>
-          <div class="desc">Non-LLM geo/route/weather helpers; also used for parsing start times</div>
+          <div class="desc">Non-LLM geo/route/weather helpers; Nominatim/OSRM/wttr spans for LangSmith</div>
         </div>
         <div class="file-row">
           <div class="name">calendar_events/</div>
@@ -1582,11 +1698,15 @@ python orchestrator_agent.py</pre>
         </div>
         <div class="file-row">
           <div class="name">requirements.txt</div>
-          <div class="desc">Includes <code>streamlit</code> + optional Google Calendar packages (commented)</div>
+          <div class="desc">Includes <code>streamlit</code>, <code>langsmith</code>, <code>python-dotenv</code> + optional Google Calendar packages</div>
+        </div>
+        <div class="file-row">
+          <div class="name">.env.example</div>
+          <div class="desc">Template for <code>LANGSMITH_TRACING</code> / <code>LANGSMITH_API_KEY</code> / <code>LANGSMITH_PROJECT</code></div>
         </div>
         <div class="file-row">
           <div class="name">README.md</div>
-          <div class="desc">Setup + CLI/GUI commands</div>
+          <div class="desc">Setup + CLI/GUI commands + LangSmith</div>
         </div>
       </div>
 
@@ -1595,7 +1715,8 @@ python orchestrator_agent.py</pre>
         <li><code>README.md</code> — purpose and how to run</li>
         <li><code>streamlit_app.py</code> — GUI entry + sidebar LLM params</li>
         <li><code>run_agents.py</code> — CLI entry + client map</li>
-        <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory</li>
+        <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory + traces</li>
+        <li><code>tracing_common.py</code> — LangSmith + token rollup</li>
         <li><code>weather_agent.py</code> — full agent pattern</li>
         <li><code>orchestrator_agent.py</code> — multi-agent delegation (params → specialists)</li>
         <li><code>calendar_agent.py</code> — OSRM duration, dates, GUI-aware open</li>
@@ -1613,16 +1734,18 @@ python orchestrator_agent.py</pre>
    → choose agent + model + temperature + top_k (GUI sidebar)
    → Orchestrator LLM chooses specialist tools
       → Specialist LLMs (same LLM params) choose domain tools
-         → httpx → free geo/weather APIs
+         → httpx → free geo/weather APIs  (LangSmith @traceable spans)
          → or calendar → OSRM duration + .ics + Google URL
             → CLI: open URL · GUI: Add to Calendar button
-   ← one combined answer (+ invite card in GUI)
+   ← one combined answer (+ invite card + token caption in GUI)
 
 Factory:    agent_common.make_chat_ollama(model, temperature, top_k)
+Tracing:    tracing_common + LangSmith (named spans, token rollup)
 Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
 Specialists: weather · travel · restaurants · calendar
 GUI:        streamlit run streamlit_app.py
+Env:        LANGSMITH_API_KEY → traces at smith.langchain.com (project agentic-ai)
 Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>
