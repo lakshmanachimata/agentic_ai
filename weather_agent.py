@@ -26,12 +26,27 @@ from langchain.agents import create_agent
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_common import invoke_agent, make_chat_ollama, run_interactive
+from tracing_common import traceable
 
 
 def _wttr_value(obj: Any) -> str:
     if isinstance(obj, list) and obj and isinstance(obj[0], dict) and "value" in obj[0]:
         return str(obj[0]["value"])
     return str(obj)
+
+
+@traceable(name="wttr.current", run_type="retriever")
+def _fetch_wttr_json(location: str) -> dict[str, Any] | str:
+    url = f"https://wttr.in/{quote(location, safe='')}?format=j1"
+    headers = {"User-Agent": "curl/8.0 (weather-agent; +https://github.com/chubin/wttr.in)"}
+    try:
+        resp = httpx.get(url, headers=headers, timeout=45.0)
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as e:
+        return f"Weather service HTTP error: {e}"
+    except json.JSONDecodeError:
+        return "Weather service returned invalid data."
 
 
 @tool
@@ -45,17 +60,9 @@ def get_weather(location: str) -> str:
     if not loc:
         return "Error: empty location."
 
-    url = f"https://wttr.in/{quote(loc, safe='')}?format=j1"
-    headers = {"User-Agent": "curl/8.0 (weather-agent; +https://github.com/chubin/wttr.in)"}
-
-    try:
-        resp = httpx.get(url, headers=headers, timeout=45.0)
-        resp.raise_for_status()
-        data = resp.json()
-    except httpx.HTTPError as e:
-        return f"Weather service HTTP error: {e}"
-    except json.JSONDecodeError:
-        return "Weather service returned invalid data."
+    data = _fetch_wttr_json(loc)
+    if isinstance(data, str):
+        return data
 
     try:
         cur = data["current_condition"][0]
@@ -106,7 +113,7 @@ def build_agent(
 
 
 def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
-    return invoke_agent(graph, question, thread_id=thread_id)
+    return invoke_agent(graph, question, thread_id=thread_id, agent_name="weather")
 
 
 def main() -> None:
@@ -116,7 +123,7 @@ def main() -> None:
         print(run_query(graph, q_one))
         return
 
-    run_interactive("Weather agent", "ask about any place.", graph)
+    run_interactive("Weather agent", "ask about any place.", graph, agent_name="weather")
 
 
 if __name__ == "__main__":

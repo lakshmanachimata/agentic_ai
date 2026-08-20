@@ -239,7 +239,7 @@ def build_agent(
 
 
 def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
-    return invoke_agent(graph, question, thread_id=thread_id)
+    return invoke_agent(graph, question, thread_id=thread_id, agent_name="travel")
 
 
 def main() -> None:
@@ -249,7 +249,12 @@ def main() -> None:
         print(run_query(graph, q_one))
         return
 
-    run_interactive("Travel-time agent", "ask about trips between places.", graph)
+    run_interactive(
+        "Travel-time agent",
+        "ask about trips between places.",
+        graph,
+        agent_name="travel",
+    )
 
 
 if __name__ == "__main__":

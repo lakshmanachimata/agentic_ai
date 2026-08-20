@@ -32,6 +32,7 @@ from agent_common import (
     DEFAULT_TOP_K,
     invoke_agent,
 )
+from tracing_common import tracing_banner
 from calendar_agent import LATEST_INVITE_PATH, build_agent as build_calendar
 from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
@@ -357,6 +358,14 @@ def main() -> None:
         )
         st.caption("Changing model/params rebuilds the agent (cached per setting).")
 
+        st.divider()
+        st.subheader("LangSmith")
+        st.caption(tracing_banner())
+        st.markdown(
+            "[Open LangSmith](https://smith.langchain.com) — copy `.env.example` to `.env` "
+            "and set `LANGSMITH_API_KEY` to trace orchestrator → specialist → tool → API hops."
+        )
+
         if st.button("Clear chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.invites = []
@@ -410,6 +419,8 @@ def main() -> None:
                     graph,
                     prompt,
                     thread_id=st.session_state.thread_id,
+                    agent_name=st.session_state.client_key,
+                    tags=["streamlit"],
                 )
             except Exception as e:
                 reply = f"Error: {e}"

@@ -786,6 +786,11 @@
               <td>Not required — commented in <code>requirements.txt</code></td>
             </tr>
             <tr>
+              <td>Observability</td>
+              <td><code>langsmith</code> → <code>tracing_common.py</code></td>
+              <td>Named traces: orchestrator → specialist → tool → HTTP. On when <code>LANGSMITH_API_KEY</code> is set</td>
+            </tr>
+            <tr>
               <td>Not used</td>
               <td>CrewAI, AutoGen, LlamaIndex, OpenAI cloud, RAG / vector DB</td>
               <td>Facts come from live APIs / files, not embeddings</td>
@@ -1496,6 +1501,7 @@ streamlit run streamlit_app.py</pre>
             <tr><td>Calendar trip duration</td><td>OSRM via <code>_osrm_duration_seconds</code></td></tr>
             <tr><td>Calendar start_time</td><td>Required; must include day (<code>tomorrow</code> / <code>YYYY-MM-DD</code>)</td></tr>
             <tr><td>GUI flag</td><td><code>AGENTIC_AI_GUI=1</code> — skip calendar auto-open</td></tr>
+            <tr><td>LangSmith</td><td><code>LANGSMITH_API_KEY</code> + project <code>agentic-ai</code> (see <code>.env.example</code>)</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
         </table>
@@ -1541,6 +1547,10 @@ python orchestrator_agent.py</pre>
         <div class="file-row">
           <div class="name">agent_common.py</div>
           <div class="desc"><code>make_chat_ollama</code>, <code>invoke_agent</code>, <code>run_interactive</code></div>
+        </div>
+        <div class="file-row">
+          <div class="name">tracing_common.py</div>
+          <div class="desc">LangSmith setup + named spans for agent turns and HTTP helpers</div>
         </div>
         <div class="file-row">
           <div class="name">orchestrator_agent.py</div>

@@ -43,6 +43,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from agent_common import invoke_agent, make_chat_ollama, run_interactive
 from route_common import fetch_osrm_route, format_duration, parse_start_time
+from tracing_common import traceable
 
 import httpx
 
@@ -157,6 +158,7 @@ def _parse_duration_minutes(duration: str, default: int = 60) -> int:
         return default
 
 
+@traceable(name="calendar.osrm_duration", run_type="retriever")
 def _osrm_duration_seconds(origin: str, destination: str, mode: str) -> tuple[float | None, str]:
     """Return (seconds, note) from OSRM, or (None, error)."""
     try:
@@ -317,6 +319,7 @@ def _try_google_api_insert(
         return f"Google Calendar API error: {e}"
 
 
+@traceable(name="calendar.open_gcal_url", run_type="tool")
 def _open_calendar_url(url: str) -> str:
     """Open the Google Calendar add-event URL in the default browser.
 
@@ -346,6 +349,7 @@ def _open_calendar_url(url: str) -> str:
         return f"Browser: failed to open ({e}). Paste this URL manually:\n{url}"
 
 
+@traceable(name="calendar.create_event_bundle", run_type="tool")
 def _create_event_bundle(
     *,
     title: str,
@@ -576,7 +580,7 @@ def build_agent(
 
 
 def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
-    return invoke_agent(graph, question, thread_id=thread_id)
+    return invoke_agent(graph, question, thread_id=thread_id, agent_name="calendar")
 
 
 def main() -> None:
@@ -590,6 +594,7 @@ def main() -> None:
         "Travel calendar agent",
         "ask to create calendar events or travel itinerary .ics files for Google Calendar.",
         graph,
+        agent_name="calendar",
     )
 
 

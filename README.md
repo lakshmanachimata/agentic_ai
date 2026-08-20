@@ -149,16 +149,45 @@ python run_agents.py -c calendar "Create calendar event Drive Paris to Lyon tomo
 - Travel time has no live traffic.
 - Always verify restaurant details before visiting.
 
-## 8) Troubleshooting
+## 8) LangSmith (debug the agent flow)
+
+Traces show **orchestrator → specialist → tool → HTTP API** (Nominatim, OSRM, wttr.in, Overpass, calendar).
+
+1. Create an API key at [smith.langchain.com](https://smith.langchain.com)
+2. Copy `.env.example` to `.env` and set:
+
+```bash
+cp .env.example .env
+# then edit .env:
+# LANGSMITH_TRACING=true
+# LANGSMITH_API_KEY=lsv2_pt_...
+# LANGSMITH_PROJECT=agentic-ai
+```
+
+3. Install extras (already in `requirements.txt`) and run as usual:
+
+```bash
+pip install -r requirements.txt
+python run_agents.py
+# or
+streamlit run streamlit_app.py
+```
+
+If `LANGSMITH_API_KEY` is set, tracing turns on automatically. CLI prints a one-line status; the Streamlit sidebar shows the same. Open the `agentic-ai` project in LangSmith after a query.
+
+Set `LANGSMITH_TRACING=false` to disable without removing the key.
+
+## 9) Troubleshooting
 
 - **`Connection refused` or model error**: make sure Ollama is running and model is pulled.
 - **No results for route restaurants**: try a bigger city route or less strict filters.
 - **No weather data**: check internet connection and try again.
 
-## 9) Project files (quick map)
+## 10) Project files (quick map)
 
 - `run_agents.py` - main CLI launcher
 - `streamlit_app.py` - Streamlit GUI (query + calendar invite card)
+- `tracing_common.py` - LangSmith tracing (env + named spans)
 - `orchestrator_agent.py` - routes to specialists
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup

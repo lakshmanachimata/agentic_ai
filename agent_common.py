@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import os
 import uuid
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_ollama import ChatOllama
 
+from tracing_common import agent_trace, print_tracing_banner
+
 DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_TEMPERATURE = 0.2
-DEFAULT_TOP_K = 40
+DEFAULT_TOP_K = 10
 
 
 def make_chat_ollama(
@@ -48,6 +51,9 @@ def invoke_agent(
     question: str,
     *,
     thread_id: str | None = None,
+    agent_name: str = "agent",
+    tags: list[str] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> str:
     """Run one user turn on ``graph``.
 
@@ -55,21 +61,60 @@ def invoke_agent(
     conversation (session memory). When ``thread_id`` is omitted, a new
     ephemeral thread id is used so each call is isolated (e.g. one-shot CLI,
     or specialist tool calls from the orchestrator).
+
+    ``agent_name`` becomes the LangSmith run name so orchestrator vs weather /
+    travel / restaurants / calendar hops are easy to filter.
     """
     q = (question or "").strip()
     if not q:
         return ""
 
     tid = thread_id if thread_id is not None else uuid.uuid4().hex
-    config: dict[str, Any] = {"configurable": {"thread_id": tid}}
-    result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
-    messages = result.get("messages", [])
-    return extract_assistant_reply(messages)
+    gui = os.environ.get("AGENTIC_AI_GUI", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    run_tags = [agent_name, "gui" if gui else "cli"]
+    if tags:
+        run_tags.extend(tags)
+    run_meta = {"agent": agent_name, "thread_id": tid, **(metadata or {})}
+    config: dict[str, Any] = {
+        "configurable": {"thread_id": tid},
+        "run_name": agent_name,
+        "tags": run_tags,
+        "metadata": run_meta,
+    }
+
+    reply = ""
+    with agent_trace(
+        agent_name,
+        inputs={"question": q, "thread_id": tid},
+        tags=run_tags,
+        metadata=run_meta,
+    ) as run:
+        result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
+        messages = result.get("messages", [])
+        reply = extract_assistant_reply(messages)
+        if run is not None:
+            try:
+                run.outputs = {"reply": reply[:4000]}
+            except Exception:
+                pass
+    return reply
 
 
-def run_interactive(title: str, hint: str, graph: Any) -> None:
+def run_interactive(
+    title: str,
+    hint: str,
+    graph: Any,
+    *,
+    agent_name: str = "agent",
+) -> None:
     """Read-eval-print loop with session memory; type ``/reset`` to start a new thread."""
     session_tid = str(uuid.uuid4())
+    print_tracing_banner()
     print(f"{title} — {hint} Session memory is on. Type /reset to clear context. Ctrl+D (EOF) to exit.")
     while True:
         try:
@@ -87,7 +132,7 @@ def run_interactive(title: str, hint: str, graph: Any) -> None:
             print("(session cleared — new thread)\n")
             continue
         try:
-            print(invoke_agent(graph, q, thread_id=session_tid))
+            print(invoke_agent(graph, q, thread_id=session_tid, agent_name=agent_name))
         except KeyboardInterrupt:
             print("\n(interrupted)")
         print()

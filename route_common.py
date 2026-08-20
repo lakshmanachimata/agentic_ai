@@ -13,6 +13,8 @@ from urllib.parse import quote
 
 import httpx
 
+from tracing_common import drop_http_client, traceable
+
 NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse"
 OSRM_URL = "https://router.project-osrm.org/route/v1"
@@ -107,6 +109,7 @@ def parse_start_time(start_time: str) -> datetime:
     return base.replace(hour=8, minute=0)
 
 
+@traceable(name="nominatim.geocode", run_type="retriever", process_inputs=drop_http_client)
 def geocode(client: httpx.Client, place: str) -> dict[str, Any] | str:
     place = place.strip()
     if not place:
@@ -189,6 +192,7 @@ def sample_middle_points(poly: list[tuple[float, float]], max_points: int = 7) -
     return out
 
 
+@traceable(name="nominatim.reverse_town", run_type="retriever", process_inputs=drop_http_client)
 def reverse_town_name(client: httpx.Client, lat: float, lon: float) -> str:
     try:
         resp = client.get(
@@ -219,6 +223,7 @@ def _wttr_value(obj: Any) -> str:
     return str(obj)
 
 
+@traceable(name="wttr.forecast_at_time", run_type="retriever")
 def weather_summary_at_time(location: str, when: datetime) -> str:
     """Forecast snippet from wttr.in for the given local time (same-day hourly)."""
     loc = location.strip()
@@ -289,6 +294,7 @@ class OsrmRoute:
     profile: str
 
 
+@traceable(name="osrm.fetch_route", run_type="retriever", process_inputs=drop_http_client)
 def fetch_osrm_route(
     client: httpx.Client,
     origin: str,
@@ -355,6 +361,7 @@ def fetch_osrm_route(
         return f"Could not parse routing response: {e}"
 
 
+@traceable(name="route.discover_intermediate_stops", run_type="chain", process_inputs=drop_http_client)
 def discover_intermediate_stops(
     client: httpx.Client,
     route: OsrmRoute,

@@ -32,6 +32,7 @@ from langchain_core.tools import tool
 from langgraph.checkpoint.memory import MemorySaver
 
 from agent_common import invoke_agent, make_chat_ollama, run_interactive
+from tracing_common import drop_http_client, traceable
 from route_common import (
     OsrmRoute,
     discover_intermediate_stops,
@@ -428,6 +429,7 @@ out center tags;
 """
 
 
+@traceable(name="overpass.post", run_type="retriever", process_inputs=drop_http_client)
 def _post_overpass(client: httpx.Client, query: str) -> httpx.Response:
     headers = {"User-Agent": USER_AGENT, "Content-Type": "text/plain"}
     last: httpx.Response | None = None
@@ -918,7 +920,7 @@ def build_agent(
 
 
 def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
-    return invoke_agent(graph, question, thread_id=thread_id)
+    return invoke_agent(graph, question, thread_id=thread_id, agent_name="restaurants")
 
 
 def main() -> None:
@@ -932,6 +934,7 @@ def main() -> None:
         "Restaurant / dining agent",
         "ask for food near an area, or along a route between two places.",
         graph,
+        agent_name="restaurants",
     )
 
 

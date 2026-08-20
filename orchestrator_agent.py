@@ -133,7 +133,7 @@ def build_agent(
 
 
 def run_query(graph: Any, question: str, *, thread_id: str | None = None) -> str:
-    return invoke_agent(graph, question, thread_id=thread_id)
+    return invoke_agent(graph, question, thread_id=thread_id, agent_name="orchestrator")
 
 
 def main() -> None:
@@ -147,6 +147,7 @@ def main() -> None:
         "Orchestrator",
         "ask about weather, travel time, places to eat, calendar events, or combine them.",
         graph,
+        agent_name="orchestrator",
     )
 
 

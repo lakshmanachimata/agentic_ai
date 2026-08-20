@@ -29,6 +29,7 @@ from collections.abc import Callable
 from typing import Any
 
 from agent_common import invoke_agent, run_interactive
+from tracing_common import print_tracing_banner
 from calendar_agent import build_agent as build_calendar
 from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
@@ -107,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
     name, hint, build = _CLIENTS[args.client]
 
     print(f"Starting {name.lower()} client…", file=sys.stderr)
+    print_tracing_banner()
     graph = build()
 
     queries = _collect_queries(args)
@@ -114,10 +116,10 @@ def main(argv: list[str] | None = None) -> int:
         # One shared thread when running several queries in one process invocation.
         tid = str(uuid.uuid4()) if len(queries) > 1 else None
         for question in queries:
-            print(invoke_agent(graph, question, thread_id=tid))
+            print(invoke_agent(graph, question, thread_id=tid, agent_name=args.client))
         return 0
 
-    run_interactive(name, hint, graph)
+    run_interactive(name, hint, graph, agent_name=args.client)
     return 0
 
 
