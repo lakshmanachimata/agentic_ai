@@ -129,6 +129,16 @@ def _parse_duration_minutes(duration: str, default: int = 60) -> int:
     if m_colon:
         return max(1, int(m_colon.group(1)) * 60 + int(m_colon.group(2)))
 
+    # Compact forms first so "8h47m" is not parsed as minutes-only ("47m").
+    m_compact = re.fullmatch(
+        r"(\d+(?:\.\d+)?)\s*h(?:ours?)?\s*(\d+)?\s*m(?:in(?:utes?)?)?",
+        raw,
+    )
+    if m_compact:
+        hours = float(m_compact.group(1))
+        mins = int(m_compact.group(2) or 0)
+        return max(1, int(round(hours * 60)) + mins)
+
     total = 0
     for amount, unit in re.findall(
         r"(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours|m|min|mins|minute|minutes)\b",
@@ -141,16 +151,6 @@ def _parse_duration_minutes(duration: str, default: int = 60) -> int:
             total += int(round(n))
     if total > 0:
         return total
-
-    # Compact forms: 8h47m, 8hr47min
-    m_compact = re.fullmatch(
-        r"(\d+(?:\.\d+)?)\s*h(?:ours?)?\s*(\d+)?\s*m(?:in(?:utes?)?)?",
-        raw,
-    )
-    if m_compact:
-        hours = float(m_compact.group(1))
-        mins = int(m_compact.group(2) or 0)
-        return max(1, int(round(hours * 60)) + mins)
 
     try:
         return max(1, int(float(raw)))

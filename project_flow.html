@@ -1614,6 +1614,7 @@ streamlit run streamlit_app.py</pre>
             <tr><td>LangSmith project</td><td><code>agentic-ai</code> (override with <code>LANGSMITH_PROJECT</code>)</td></tr>
             <tr><td>LangSmith tokens</td><td>Per-span <code>usage_metadata</code> from Ollama; orchestrator rollup via <code>by_agent</code></td></tr>
             <tr><td>Disable tracing</td><td><code>LANGSMITH_TRACING=false</code></td></tr>
+            <tr><td>Tests</td><td><code>pytest</code> + <code>pytest-cov</code> (min 90% coverage; <code>requirements-dev.txt</code> / <code>htmlcov/</code>)</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
           </tbody>
         </table>
@@ -1644,7 +1645,11 @@ python run_agents.py -c calendar "Add Mumbai to Hyderabad tomorrow 10 AM to cale
 <span class="tok-dim"># Direct module entry points also work</span>
 python weather_agent.py
 python calendar_agent.py
-python orchestrator_agent.py</pre>
+python orchestrator_agent.py
+
+<span class="tok-dim"># Unit tests + coverage (writes htmlcov/index.html)</span>
+pip install -r requirements-dev.txt
+pytest</pre>
     </section>
 
     <!-- FILES -->
@@ -1703,6 +1708,14 @@ python orchestrator_agent.py</pre>
         <div class="file-row">
           <div class="name">.env.example</div>
           <div class="desc">Template for <code>LANGSMITH_TRACING</code> / <code>LANGSMITH_API_KEY</code> / <code>LANGSMITH_PROJECT</code></div>
+        </div>
+        <div class="file-row">
+          <div class="name">tests/</div>
+          <div class="desc">pytest unit tests + coverage (<code>pip install -r requirements-dev.txt</code> then <code>pytest</code>)</div>
+        </div>
+        <div class="file-row">
+          <div class="name">pyproject.toml</div>
+          <div class="desc">pytest / pytest-cov config (HTML report in <code>htmlcov/</code>)</div>
         </div>
         <div class="file-row">
           <div class="name">README.md</div>

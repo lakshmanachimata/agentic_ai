@@ -19,6 +19,7 @@ One-off:
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import timedelta
 from typing import Any, Literal

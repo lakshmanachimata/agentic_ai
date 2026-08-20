@@ -179,13 +179,24 @@ Each agent span records **token usage** from Ollama (`prompt_eval_count` / `eval
 
 Set `LANGSMITH_TRACING=false` to disable without removing the key.
 
-## 9) Troubleshooting
+## 9) Tests and coverage
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+Runs **pytest** with **pytest-cov**. Terminal shows missing lines; HTML report is written to `htmlcov/index.html` and XML to `coverage.xml`. The run **fails if total coverage is below 90%**.
+
+Unit tests cover parsers, tracing/token rollup, calendar `.ics` helpers, restaurant/route geometry, mocked Nominatim/OSRM/Overpass/wttr, CLI/GUI entry points, and Streamlit invite parsing. They do **not** require Ollama or live map APIs.
+
+## 10) Troubleshooting
 
 - **`Connection refused` or model error**: make sure Ollama is running and model is pulled.
 - **No results for route restaurants**: try a bigger city route or less strict filters.
 - **No weather data**: check internet connection and try again.
 
-## 10) Project files (quick map)
+## 11) Project files (quick map)
 
 - `run_agents.py` - main CLI launcher
 - `streamlit_app.py` - Streamlit GUI (query + calendar invite card)
@@ -196,3 +207,4 @@ Set `LANGSMITH_TRACING=false` to disable without removing the key.
 - `restaurant_agent.py` - restaurant tools
 - `calendar_agent.py` - travel calendar (.ics + Google links / optional API)
 - `route_common.py` - shared route/time/weather helpers
+- `tests/` - pytest unit tests (`pytest` / coverage reports)
