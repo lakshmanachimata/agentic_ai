@@ -175,6 +175,8 @@ streamlit run streamlit_app.py
 
 If `LANGSMITH_API_KEY` is set, tracing turns on automatically. CLI prints a one-line status; the Streamlit sidebar shows the same. Open the `agentic-ai` project in LangSmith after a query.
 
+Each agent span records **token usage** from Ollama (`prompt_eval_count` / `eval_count`): input, output, total, and LLM-call count. The orchestrator trace rolls up nested specialists (weather + travel + …). The same line is printed in the CLI and under Streamlit replies.
+
 Set `LANGSMITH_TRACING=false` to disable without removing the key.
 
 ## 9) Troubleshooting

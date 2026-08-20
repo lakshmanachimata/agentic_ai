@@ -32,7 +32,7 @@ from agent_common import (
     DEFAULT_TOP_K,
     invoke_agent,
 )
-from tracing_common import tracing_banner
+from tracing_common import format_token_usage, last_token_usage, tracing_banner
 from calendar_agent import LATEST_INVITE_PATH, build_agent as build_calendar
 from orchestrator_agent import build_agent as build_orchestrator
 from restaurant_agent import build_agent as build_restaurant
@@ -386,6 +386,11 @@ def main() -> None:
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
+            tokens = msg.get("tokens")
+            if msg.get("role") == "assistant" and tokens and (
+                tokens.get("llm_calls") or tokens.get("total_tokens")
+            ):
+                st.caption(format_token_usage(tokens))
 
     # Calendar invites from latest replies
     if st.session_state.invites:
@@ -425,8 +430,17 @@ def main() -> None:
             except Exception as e:
                 reply = f"Error: {e}"
         st.markdown(reply or "_(empty reply)_")
+        tokens = last_token_usage()
+        if tokens.get("llm_calls") or tokens.get("total_tokens"):
+            st.caption(format_token_usage(tokens))
 
-    st.session_state.messages.append({"role": "assistant", "content": reply or ""})
+    st.session_state.messages.append(
+        {
+            "role": "assistant",
+            "content": reply or "",
+            "tokens": dict(last_token_usage()),
+        }
+    )
 
     after_mtime = (
         LATEST_INVITE_PATH.stat().st_mtime if LATEST_INVITE_PATH.is_file() else 0.0

@@ -3,13 +3,21 @@
 from __future__ import annotations
 
 import os
+import sys
 import uuid
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_ollama import ChatOllama
 
-from tracing_common import agent_trace, print_tracing_banner
+from tracing_common import (
+    agent_trace,
+    begin_usage_span,
+    finish_usage_span,
+    format_token_usage,
+    print_tracing_banner,
+    usage_from_messages,
+)
 
 DEFAULT_OLLAMA_MODEL = "qwen3.5:latest"
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
@@ -88,20 +96,37 @@ def invoke_agent(
     }
 
     reply = ""
+    usage: dict[str, Any] = {}
+    is_root = begin_usage_span()
     with agent_trace(
         agent_name,
         inputs={"question": q, "thread_id": tid},
         tags=run_tags,
         metadata=run_meta,
     ) as run:
-        result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
-        messages = result.get("messages", [])
-        reply = extract_assistant_reply(messages)
-        if run is not None:
-            try:
-                run.outputs = {"reply": reply[:4000]}
-            except Exception:
-                pass
+        try:
+            result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
+            messages = result.get("messages", [])
+            reply = extract_assistant_reply(messages)
+            local_usage = usage_from_messages(messages)
+            usage = finish_usage_span(
+                local_usage,
+                agent_name=agent_name,
+                run=run,
+                reply=reply,
+                model=DEFAULT_OLLAMA_MODEL,
+            )
+        except Exception:
+            finish_usage_span(
+                usage_from_messages([]),
+                agent_name=agent_name,
+                run=run,
+                reply="",
+                model=DEFAULT_OLLAMA_MODEL,
+            )
+            raise
+    if is_root and not gui and usage.get("llm_calls"):
+        print(format_token_usage(usage), file=sys.stderr)
     return reply
 
 
