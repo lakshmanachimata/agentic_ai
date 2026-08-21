@@ -10,6 +10,7 @@ from typing import Any
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_ollama import ChatOllama
 
+from guardrails_common import screen_prompt
 from tracing_common import (
     agent_trace,
     begin_usage_span,
@@ -85,6 +86,7 @@ def invoke_agent(
     q = (question or "").strip()
     if not q:
         return ""
+    blocked = screen_prompt(q, agent_name=agent_name)
 
     tid = thread_id if thread_id is not None else uuid.uuid4().hex
     trip_token = None
@@ -99,9 +101,13 @@ def invoke_agent(
     run_tags = [agent_name, "gui" if gui else "cli"]
     if tags:
         run_tags.extend(tags)
+    if blocked:
+        run_tags.append("guardrail")
     trip_before = snapshot_for_trace()
     trip_snap = {k: v for k, v in trip_before.items() if v not in (None, "", "driving")}
     run_meta = {"agent": agent_name, "thread_id": tid, **(metadata or {})}
+    if blocked:
+        run_meta["guardrail"] = True
     if trip_snap:
         run_meta["trip"] = trip_snap
         if "trip" not in run_tags:
@@ -123,18 +129,29 @@ def invoke_agent(
         metadata=run_meta,
     ) as run:
         try:
-            result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
-            messages = result.get("messages", [])
-            reply = extract_assistant_reply(messages)
-            local_usage = usage_from_messages(messages)
-            usage = finish_usage_span(
-                local_usage,
-                agent_name=agent_name,
-                run=run,
-                reply=reply,
-                model=DEFAULT_OLLAMA_MODEL,
-                trip=snapshot_for_trace(),
-            )
+            if blocked:
+                reply = blocked
+                usage = finish_usage_span(
+                    usage_from_messages([]),
+                    agent_name=agent_name,
+                    run=run,
+                    reply=reply,
+                    model=DEFAULT_OLLAMA_MODEL,
+                    trip=snapshot_for_trace(),
+                )
+            else:
+                result = graph.invoke({"messages": [HumanMessage(content=q)]}, config)
+                messages = result.get("messages", [])
+                reply = extract_assistant_reply(messages)
+                local_usage = usage_from_messages(messages)
+                usage = finish_usage_span(
+                    local_usage,
+                    agent_name=agent_name,
+                    run=run,
+                    reply=reply,
+                    model=DEFAULT_OLLAMA_MODEL,
+                    trip=snapshot_for_trace(),
+                )
         except Exception:
             finish_usage_span(
                 usage_from_messages([]),

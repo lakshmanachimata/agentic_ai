@@ -229,3 +229,30 @@ def test_nested_invoke_inherits_trip_state(monkeypatch):
         assert ts.get_trip().origin == "Mumbai"
     finally:
         ts.reset_trip_scope(token)
+
+
+def test_invoke_agent_blocks_abuse_without_calling_graph():
+    class Boom:
+        def invoke(self, *_a, **_k):
+            raise AssertionError("guardrail should stop the graph")
+
+    out = agent_common.invoke_agent(
+        Boom(),
+        "you are an asshole, weather in Rome",
+        agent_name="orchestrator",
+    )
+    assert "abusive" in out.lower()
+
+
+def test_invoke_agent_blocks_wrong_specialist_hop():
+    class Boom:
+        def invoke(self, *_a, **_k):
+            raise AssertionError("misrouted hop should not run")
+
+    out = agent_common.invoke_agent(
+        Boom(),
+        "best sushi restaurants in Osaka",
+        agent_name="weather",
+    )
+    assert "weather" in out
+    assert "does not belong" in out.lower()

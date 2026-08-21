@@ -49,6 +49,38 @@ def test_orchestrator_specialist_tools(monkeypatch):
     assert "create_travel_calendar" in cal_out
 
 
+def test_orchestrator_tools_block_abuse_and_wrong_hops(monkeypatch):
+    captured: dict = {}
+    monkeypatch.setattr(oa, "build_weather_agent", lambda **_k: "wg")
+    monkeypatch.setattr(oa, "build_travel_agent", lambda **_k: "tg")
+    monkeypatch.setattr(oa, "build_restaurant_agent", lambda **_k: "rg")
+    monkeypatch.setattr(oa, "build_calendar_agent", lambda **_k: "cg")
+    monkeypatch.setattr(oa, "make_chat_ollama", lambda **_k: "llm")
+
+    def boom(_g, q):
+        raise AssertionError(f"specialist should not run: {q}")
+
+    monkeypatch.setattr(oa, "run_weather_query", boom)
+    monkeypatch.setattr(oa, "run_travel_query", boom)
+    monkeypatch.setattr(oa, "run_restaurant_query", boom)
+    monkeypatch.setattr(oa, "run_calendar_query", boom)
+    monkeypatch.setattr(oa, "create_agent", lambda _llm, tools, **_k: captured.setdefault("tools", tools))
+    oa.build_agent()
+    by_name = {t.name: t for t in captured["tools"]}
+
+    abuse = by_name["ask_weather_specialist"].invoke({"query": "fuck you, weather in Rome"})
+    assert "abusive" in abuse.lower()
+    wrong = by_name["ask_weather_specialist"].invoke({"query": "best sushi restaurants in Osaka"})
+    assert "weather" in wrong
+    assert "does not belong" in wrong.lower()
+    cal_wrong = by_name["ask_calendar_specialist"].invoke({"query": "italian restaurants near the Colosseum"})
+    assert "calendar" in cal_wrong
+    travel_wrong = by_name["ask_travel_specialist"].invoke({"query": "what's the weather in Rome"})
+    assert "travel" in travel_wrong
+    food_wrong = by_name["ask_restaurant_specialist"].invoke({"query": "add this trip to google calendar"})
+    assert "restaurants" in food_wrong
+
+
 def test_orchestrator_run_and_main(monkeypatch):
     monkeypatch.setattr(oa, "invoke_agent", lambda *_a, **_k: "ok")
     assert oa.run_query("g", "q") == "ok"

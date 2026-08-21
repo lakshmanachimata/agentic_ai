@@ -37,6 +37,7 @@ from travel_agent import build_agent as build_travel_agent
 from travel_agent import run_query as run_travel_query
 from weather_agent import build_agent as build_weather_agent
 from weather_agent import run_query as run_weather_query
+from guardrails_common import screen_specialist_hop
 from trip_state import compose_specialist_query, harvest_travel_metrics, update_trip
 
 
@@ -61,11 +62,12 @@ def build_agent(
         location names (e.g. 'What is the weather in Tokyo today?').
         Prefer the location field when you already know the place.
         """
+        text = query.strip() if query.strip() else (location or "")
+        blocked = screen_specialist_hop(text, "weather")
+        if blocked:
+            return blocked
         update_trip(destination=location)
-        composed = compose_specialist_query(
-            query.strip() if query.strip() else (location or ""),
-            specialist="weather",
-        )
+        composed = compose_specialist_query(text, specialist="weather")
         return run_weather_query(weather_graph, composed)
 
     @tool
@@ -86,6 +88,9 @@ def build_agent(
         arrival at each town, and weather at those times. Include start_time from
         origin when the user gives it (otherwise specialist assumes 8:00 AM).
         """
+        blocked = screen_specialist_hop(query, "travel")
+        if blocked:
+            return blocked
         update_trip(
             origin=origin,
             destination=destination,
@@ -110,15 +115,16 @@ def build_agent(
         Use for dining near an area, or at intermediate towns on a route.
         Pass origin/destination/start_time as fields when this is a trip query.
         """
+        text = query.strip() if query.strip() else area
+        blocked = screen_specialist_hop(text, "restaurants")
+        if blocked:
+            return blocked
         update_trip(
             origin=origin,
             destination=destination,
             start_time=start_time,
         )
-        composed = compose_specialist_query(
-            query.strip() if query.strip() else area,
-            specialist="restaurants",
-        )
+        composed = compose_specialist_query(text, specialist="restaurants")
         return run_restaurant_query(restaurant_graph, composed)
 
     @tool
@@ -137,6 +143,9 @@ def build_agent(
         Use when the user wants to create a calendar event, add a trip to Google
         Calendar, save an .ics file, or list saved calendar files.
         """
+        blocked = screen_specialist_hop(query, "calendar")
+        if blocked:
+            return blocked
         update_trip(
             origin=origin,
             destination=destination,
@@ -173,7 +182,9 @@ def build_agent(
             "using the calendar tool's actual start/end datetimes (do not restate a wrong "
             "guessed window like 10 AM–4 PM if the tool said otherwise).\n"
             "Use prior turns and typed trip state for coreferences ('there', 'same trip', "
-            "'add that to my calendar')."
+            "'add that to my calendar').\n"
+            "Do not send a dining/calendar question to the weather specialist (or similar "
+            "cross-routing); tools refuse misrouted hops."
         ),
         checkpointer=MemorySaver(),
     )

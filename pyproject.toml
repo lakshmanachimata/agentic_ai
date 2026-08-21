@@ -13,6 +13,7 @@ addopts = [
 ]
 filterwarnings = [
   "ignore::DeprecationWarning",
+  "ignore:Could not obtain an event loop:UserWarning",
 ]
 
 [tool.coverage.run]

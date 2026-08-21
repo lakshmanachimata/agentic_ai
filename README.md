@@ -186,7 +186,17 @@ Each agent span records **token usage** from Ollama (`prompt_eval_count` / `eval
 
 Set `LANGSMITH_TRACING=false` to disable without removing the key.
 
-## 9) Tests and coverage
+## 9) Guardrails (abuse and misrouted hops)
+
+[Guardrails AI](https://github.com/guardrails-ai/guardrails) (Apache-2.0) screens prompts **before** the LLM runs. Validators are **local** (no Hub ML models, no remote inference):
+
+- **Abusive / harassing** user text is refused.
+- **Prompt injection** (“ignore previous instructions”, jailbreak) is refused.
+- **Wrong specialist hops**: if the orchestrator sends a dining question to the weather agent (or similar), the tool returns a routing refusal instead of calling that specialist.
+
+On in `invoke_agent` and on each orchestrator `ask_*_specialist` tool. Disable with `AGENTIC_AI_GUARDRAILS=false`. Blocked turns still get a LangSmith span tagged `guardrail`.
+
+## 10) Tests and coverage
 
 ```bash
 pip install -r requirements-dev.txt
@@ -195,21 +205,22 @@ pytest
 
 Runs **pytest** with **pytest-cov**. Terminal shows missing lines; HTML report is written to `htmlcov/index.html` and XML to `coverage.xml`. The run **fails if total coverage is below 90%**.
 
-Unit tests cover parsers, tracing/token rollup, calendar `.ics` helpers, restaurant/route geometry, mocked Nominatim/OSRM/Overpass/wttr, CLI/GUI entry points, and Streamlit invite parsing. They do **not** require Ollama or live map APIs.
+Unit tests cover parsers, tracing/token rollup, calendar `.ics` helpers, restaurant/route geometry, mocked Nominatim/OSRM/Overpass/wttr, Guardrails abuse/injection/wrong-hop screens, CLI/GUI entry points, and Streamlit invite parsing. They do **not** require Ollama or live map APIs.
 
-## 10) Troubleshooting
+## 11) Troubleshooting
 
 - **`Connection refused` or model error**: make sure Ollama is running and model is pulled.
 - **No results for route restaurants**: try a bigger city route or less strict filters.
 - **No weather data**: check internet connection and try again.
 
-## 11) Project files (quick map)
+## 12) Project files (quick map)
 
 - `run_agents.py` - main CLI launcher
 - `streamlit_app.py` - Streamlit GUI (query + calendar invite card)
 - `tracing_common.py` - LangSmith tracing (env + named spans + trip state on runs)
 - `orchestrator_agent.py` - routes to specialists
 - `trip_state.py` - typed trip fields (`origin`, `duration_s`, `start_time`) shared across specialist hops and LangSmith
+- `guardrails_common.py` - Guardrails AI: abuse, injection, and wrong specialist hops
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup
 - `restaurant_agent.py` - restaurant tools

@@ -794,6 +794,11 @@
               <td>Named traces, token counts, and typed trip fields on spans. On when <code>LANGSMITH_API_KEY</code> is set</td>
             </tr>
             <tr>
+              <td>Guardrails</td>
+              <td><code>guardrails-ai</code> → <code>guardrails_common.py</code></td>
+              <td>Local validators: abuse, jailbreak, wrong specialist hops</td>
+            </tr>
+            <tr>
               <td>Not used</td>
               <td>CrewAI, AutoGen, LlamaIndex, OpenAI cloud, RAG / vector DB</td>
               <td>Facts come from live APIs / files, not embeddings</td>
@@ -1098,6 +1103,15 @@ create_agent(make_chat_ollama(**llm_kwargs), tools=[
         <strong>Typed trip state</strong> is the exception: it is keyed by the orchestrator <code>thread_id</code>
         so a later <code>ask_calendar_specialist</code> can read <code>duration_s</code> that travel just wrote.
         The same snapshot is written onto LangSmith span outputs as <code>trip</code>.
+      </div>
+
+      <div class="callout">
+        <strong>Guardrails AI:</strong> <code>guardrails_common.py</code> runs local
+        validators (Apache-2.0, no Hub models) on the user turn and on each
+        specialist hop. Abusive language and jailbreaks are refused; a dining
+        question sent to the weather specialist (or similar misrouting) is
+        refused with a <code>guardrail</code> LangSmith tag. Disable with
+        <code>AGENTIC_AI_GUARDRAILS=false</code>.
       </div>
 
       <h3>You can also skip the orchestrator</h3>
@@ -1643,6 +1657,8 @@ streamlit run streamlit_app.py</pre>
             <tr><td>LangSmith project</td><td><code>agentic-ai</code> (override with <code>LANGSMITH_PROJECT</code>)</td></tr>
             <tr><td>LangSmith tokens</td><td>Per-span <code>usage_metadata</code> from Ollama; orchestrator rollup via <code>by_agent</code></td></tr>
             <tr><td>LangSmith trip</td><td>Span inputs/outputs/metadata <code>trip</code> from <code>trip_state.snapshot_for_trace()</code>; HTTP spans too</td></tr>
+            <tr><td>Guardrails AI</td><td>Local validators in <code>guardrails_common.py</code> — abuse, injection, wrong specialist hops</td></tr>
+            <tr><td>Disable guardrails</td><td><code>AGENTIC_AI_GUARDRAILS=false</code></td></tr>
             <tr><td>Disable tracing</td><td><code>LANGSMITH_TRACING=false</code></td></tr>
             <tr><td>Tests</td><td><code>pytest</code> + <code>pytest-cov</code> (min 90% coverage; <code>requirements-dev.txt</code> / <code>htmlcov/</code>)</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
@@ -1728,6 +1744,10 @@ pytest</pre>
           <div class="desc">Typed trip context (<code>origin</code>, <code>duration_s</code>, <code>start_time</code>) shared orchestrator → specialists and attached to LangSmith traces</div>
         </div>
         <div class="file-row">
+          <div class="name">guardrails_common.py</div>
+          <div class="desc">Guardrails AI — abusive prompts, jailbreaks, and misrouted specialist hops</div>
+        </div>
+        <div class="file-row">
           <div class="name">route_common.py</div>
           <div class="desc">Non-LLM geo/route/weather helpers; Nominatim/OSRM/wttr spans for LangSmith</div>
         </div>
@@ -1753,7 +1773,7 @@ pytest</pre>
         </div>
         <div class="file-row">
           <div class="name">README.md</div>
-          <div class="desc">Setup + CLI/GUI commands + LangSmith</div>
+          <div class="desc">Setup + CLI/GUI commands + LangSmith + Guardrails</div>
         </div>
       </div>
 
@@ -1765,6 +1785,7 @@ pytest</pre>
         <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory + traces</li>
         <li><code>tracing_common.py</code> — LangSmith + token rollup + trip state</li>
         <li><code>trip_state.py</code> — shared origin / duration / start_time (also on traces)</li>
+        <li><code>guardrails_common.py</code> — abuse / injection / misrouted hops</li>
         <li><code>weather_agent.py</code> — full agent pattern</li>
         <li><code>orchestrator_agent.py</code> — multi-agent delegation (params → specialists)</li>
         <li><code>calendar_agent.py</code> — OSRM duration, dates, GUI-aware open</li>
@@ -1793,7 +1814,7 @@ Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
 Specialists: weather · travel · restaurants · calendar
 GUI:        streamlit run streamlit_app.py
-Env:        LANGSMITH_API_KEY → traces at smith.langchain.com (project agentic-ai; tokens + trip)
+Env:        LANGSMITH_API_KEY → traces; AGENTIC_AI_GUARDRAILS → abuse / hop screens
 Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>
