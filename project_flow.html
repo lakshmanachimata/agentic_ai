@@ -624,6 +624,7 @@
         <li><a href="#brain">LLM brain</a></li>
         <li><a href="#react">ReAct loop</a></li>
         <li><a href="#agents">Agents talk</a></li>
+        <li><a href="#guardrails">Guardrails</a></li>
         <li><a href="#walkthrough">Walkthrough</a></li>
         <li><a href="#calendar">Calendar</a></li>
         <li><a href="#gui">GUI</a></li>
@@ -920,6 +921,8 @@ Orchestrator (create_agent + MemorySaver + make_chat_ollama)
 
 LLM params (model, temperature, top_k) apply to orchestrator + all specialists
 Each agent’s “brain” = ChatOllama deciding tool calls
+Guardrails (before brain): regex validators → optional same-chat LLM classifier
+  labels: ok | abuse | injection | off_topic | wrong_specialist
 LangSmith (tracing_common): named spans + token rollup + trip state when LANGSMITH_API_KEY is set</pre>
       </div>
     </section>
@@ -1108,21 +1111,86 @@ create_agent(make_chat_ollama(**llm_kwargs), tools=[
         The same snapshot is written onto LangSmith span outputs as <code>trip</code>.
       </div>
 
-      <div class="callout">
-        <strong>Guardrails AI:</strong> <code>guardrails_common.py</code> runs local
-        validators (Apache-2.0, no Hub models) on the user turn and on each
-        specialist hop. Abusive language is refused. Prompt injection is caught
-        and answered with a fixed reply that does <em>not</em> follow the override
-        (how to re-ask a normal weather/travel/dining/calendar question). A dining
-        question sent to the weather specialist (or similar misrouting) is
-        refused with a <code>guardrail</code> LangSmith tag. Disable with
-        <code>AGENTIC_AI_GUARDRAILS=false</code>.
+      <div class="callout" id="guardrails">
+        <strong>Guardrails AI (two passes):</strong>
+        <code>guardrails_common.py</code> screens prompts <em>before</em> the agent ReAct loop
+        (in <code>invoke_agent</code> and each orchestrator <code>ask_*_specialist</code> hop).
+        Blocked turns get a fixed refusal and a LangSmith <code>guardrail</code> tag — the
+        override is never followed.
+      </div>
+
+      <ol class="steps">
+        <li>
+          <strong>Pass 1 — local regex validators</strong>
+          <p>
+            Custom Guardrails validators (Apache-2.0, no Hub ML models):
+            <code>AbusiveLanguage</code>, <code>PromptInjection</code>, and on hops
+            <code>SpecialistHop</code>. Fast, offline, deterministic — catches obvious
+            swearing, “ignore previous instructions”, jailbreak phrases, and clear
+            wrong-domain hops (e.g. sushi → weather).
+          </p>
+        </li>
+        <li>
+          <strong>Pass 2 — same chat LLM classifier</strong>
+          <p>
+            If regex passes, <code>LlmSafety</code> calls the <strong>same Ollama chat model</strong>
+            via <code>make_chat_ollama(temperature=0.0)</code> (lazy import from
+            <code>agent_common</code>). The classifier replies with one label:
+            <code>ok</code> · <code>abuse</code> · <code>injection</code> ·
+            <code>off_topic</code> · <code>wrong_specialist</code>.
+            This catches paraphrased jailbreaks, subtle harassment, and asks outside
+            weather / travel / dining / calendar / images that regex would miss.
+          </p>
+        </li>
+        <li>
+          <strong>Fail open on LLM errors</strong>
+          <p>
+            If Ollama is down or the classifier returns garbage, the turn is
+            <em>allowed</em> (regex still applied). Unit tests set
+            <code>AGENTIC_AI_GUARDRAILS_LLM=false</code> so they stay offline.
+          </p>
+        </li>
+      </ol>
+
+      <div class="panel dark" style="margin-top:0.4rem">
+        <p style="margin-bottom:0.6rem;font-family:'Fragment Mono',monospace;font-size:0.72rem;letter-spacing:0.06em;text-transform:uppercase;color:#7dcbab">Guardrails sequence</p>
+<pre class="mermaid-ish" style="margin:0;padding:0;background:transparent">User prompt / specialist hop text
+ │
+ ▼
+guardrails_common.screen_prompt / screen_specialist_hop
+ │
+ ├─ AGENTIC_AI_GUARDRAILS=false? ──► skip → agent LLM
+ │
+ ▼
+Pass 1: Guard("user-safety" | "specialist-hop")
+        AbusiveLanguage · PromptInjection · [SpecialistHop]
+ │
+ ├─ fail → fixed refusal (abuse / injection / wrong_specialist)
+ │         LangSmith tag: guardrail
+ │
+ ▼ (pass)
+Pass 2: AGENTIC_AI_GUARDRAILS_LLM? (default true)
+        Guard("llm-safety") → LlmSafety → ChatOllama classify
+ │
+ ├─ abuse / injection / off_topic / wrong_specialist → refusal
+ ├─ ok → continue
+ └─ LLM error → fail open → continue
+ │
+ ▼
+invoke_agent / specialist ReAct (tools + facts)</pre>
+      </div>
+
+      <div class="callout warn">
+        <strong>Env knobs:</strong>
+        <code>AGENTIC_AI_GUARDRAILS=false</code> disables everything;
+        <code>AGENTIC_AI_GUARDRAILS_LLM=false</code> keeps regex only (no classifier LLM call).
+        See <code>.env.example</code>.
       </div>
 
       <h3>You can also skip the orchestrator</h3>
       <p>
         <code>run_agents.py --client weather|travel|restaurants|calendar</code> runs a specialist directly —
-        same brain + tools, no supervisor layer.
+        same brain + tools, no supervisor layer. Guardrails still run via <code>invoke_agent</code>.
       </p>
     </section>
 
@@ -1662,8 +1730,9 @@ streamlit run streamlit_app.py</pre>
             <tr><td>LangSmith project</td><td><code>agentic-ai</code> (override with <code>LANGSMITH_PROJECT</code>)</td></tr>
             <tr><td>LangSmith tokens</td><td>Per-span <code>usage_metadata</code> from Ollama; orchestrator rollup via <code>by_agent</code></td></tr>
             <tr><td>LangSmith trip</td><td>Span inputs/outputs/metadata <code>trip</code> from <code>trip_state.snapshot_for_trace()</code>; HTTP spans too</td></tr>
-            <tr><td>Guardrails AI</td><td>Local validators in <code>guardrails_common.py</code> — abuse, injection, wrong specialist hops</td></tr>
+            <tr><td>Guardrails AI</td><td><code>guardrails_common.py</code> — Pass 1 regex (abuse / injection / wrong hop); Pass 2 same-chat LLM (<code>ok</code> / <code>abuse</code> / <code>injection</code> / <code>off_topic</code> / <code>wrong_specialist</code>)</td></tr>
             <tr><td>Disable guardrails</td><td><code>AGENTIC_AI_GUARDRAILS=false</code></td></tr>
+            <tr><td>Regex-only guardrails</td><td><code>AGENTIC_AI_GUARDRAILS_LLM=false</code> (skip classifier LLM call)</td></tr>
             <tr><td>Disable tracing</td><td><code>LANGSMITH_TRACING=false</code></td></tr>
             <tr><td>Tests</td><td><code>pytest</code> + <code>pytest-cov</code> (min 90% coverage; <code>requirements-dev.txt</code> / <code>htmlcov/</code>)</td></tr>
             <tr><td>Optional Google OAuth</td><td><code>credentials.json</code> → <code>token.json</code></td></tr>
@@ -1677,9 +1746,11 @@ python3 -m venv .venv &amp;&amp; source .venv/bin/activate
 pip install -r requirements.txt
 ollama pull qwen3.5:latest
 
-<span class="tok-dim"># LangSmith (optional — debug traces + tokens)</span>
+<span class="tok-dim"># LangSmith + Guardrails (optional)</span>
 cp .env.example .env
 <span class="tok-dim"># set LANGSMITH_API_KEY=lsv2_pt_…</span>
+<span class="tok-dim"># AGENTIC_AI_GUARDRAILS=true</span>
+<span class="tok-dim"># AGENTIC_AI_GUARDRAILS_LLM=true   # same chat LLM second pass</span>
 
 <span class="tok-dim"># Streamlit GUI (recommended for demos)</span>
 streamlit run streamlit_app.py
@@ -1750,7 +1821,7 @@ pytest</pre>
         </div>
         <div class="file-row">
           <div class="name">guardrails_common.py</div>
-          <div class="desc">Guardrails AI — abusive prompts, jailbreaks, and misrouted specialist hops</div>
+          <div class="desc">Guardrails AI — regex validators + optional same-chat LLM classifier (abuse, injection, off-topic, wrong hops)</div>
         </div>
         <div class="file-row">
           <div class="name">route_common.py</div>
@@ -1766,7 +1837,7 @@ pytest</pre>
         </div>
         <div class="file-row">
           <div class="name">.env.example</div>
-          <div class="desc">Template for <code>LANGSMITH_TRACING</code> / <code>LANGSMITH_API_KEY</code> / <code>LANGSMITH_PROJECT</code></div>
+          <div class="desc">Template for LangSmith + <code>AGENTIC_AI_GUARDRAILS</code> / <code>AGENTIC_AI_GUARDRAILS_LLM</code></div>
         </div>
         <div class="file-row">
           <div class="name">tests/</div>
@@ -1790,7 +1861,7 @@ pytest</pre>
         <li><code>agent_common.py</code> — <code>make_chat_ollama</code> + one turn + session memory + traces</li>
         <li><code>tracing_common.py</code> — LangSmith + token rollup + trip state</li>
         <li><code>trip_state.py</code> — shared origin / duration / start_time (also on traces)</li>
-        <li><code>guardrails_common.py</code> — abuse / injection / misrouted hops</li>
+        <li><code>guardrails_common.py</code> — regex pass + LLM classifier (abuse / injection / off-topic / hops)</li>
         <li><code>weather_agent.py</code> — full agent pattern</li>
         <li><code>orchestrator_agent.py</code> — multi-agent delegation (params → specialists)</li>
         <li><code>calendar_agent.py</code> — OSRM duration, dates, GUI-aware open</li>
@@ -1806,20 +1877,26 @@ pytest</pre>
       <div class="panel dark">
 <pre style="margin:0;background:transparent;padding:0"><span class="tok-amber">User</span> (CLI or Streamlit)
    → choose agent + model + temperature + top_k (GUI sidebar)
+   → Guardrails screen (before ReAct)
+        Pass 1: regex — abuse / injection / wrong hop
+        Pass 2: same ChatOllama — ok | abuse | injection | off_topic | wrong_specialist
+        (fail open if classifier LLM errors)
    → Orchestrator LLM chooses specialist tools
-      → Specialist LLMs (same LLM params) choose domain tools
+      → Specialist hops screened again → specialist LLMs choose domain tools
          → httpx → free geo/weather APIs  (LangSmith @traceable spans)
          → or calendar → OSRM duration + .ics + Google URL
             → CLI: open URL · GUI: Add to Calendar button
    ← one combined answer (+ invite card + token caption in GUI)
 
 Factory:    agent_common.make_chat_ollama(model, temperature, top_k)
+Guardrails: guardrails_common (regex + optional LLM via make_chat_ollama)
 Tracing:    tracing_common + LangSmith (named spans, token rollup, trip state)
 Frameworks: LangChain create_agent + LangGraph MemorySaver + Ollama ChatOllama
 Pattern:    ReAct + agents-as-tools (supervisor)
 Specialists: weather · travel · restaurants · calendar
 GUI:        streamlit run streamlit_app.py
-Env:        LANGSMITH_API_KEY → traces; AGENTIC_AI_GUARDRAILS → abuse / hop screens
+Env:        LANGSMITH_API_KEY → traces
+            AGENTIC_AI_GUARDRAILS → on/off; AGENTIC_AI_GUARDRAILS_LLM → classifier pass
 Not this:   CrewAI / AutoGen / RAG / required cloud OpenAI keys</pre>
       </div>
     </section>
