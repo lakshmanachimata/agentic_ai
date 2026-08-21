@@ -186,15 +186,19 @@ Each agent span records **token usage** from Ollama (`prompt_eval_count` / `eval
 
 Set `LANGSMITH_TRACING=false` to disable without removing the key.
 
-## 9) Guardrails (abuse and misrouted hops)
+## 9) Guardrails (abuse, injection, off-topic, misrouted hops)
 
-[Guardrails AI](https://github.com/guardrails-ai/guardrails) (Apache-2.0) screens prompts **before** the LLM runs. Validators are **local** (no Hub ML models, no remote inference):
+[Guardrails AI](https://github.com/guardrails-ai/guardrails) (Apache-2.0) screens prompts **before** the agent LLM runs:
 
-- **Abusive / harassing** user text is refused.
-- **Prompt injection** (“ignore previous instructions”, jailbreak, “dump the system prompt”) is caught. The reply **does not follow the override**; it explains that and how to re-ask a normal weather / travel / dining / calendar question.
-- **Wrong specialist hops**: if the orchestrator sends a dining question to the weather agent (or similar), the tool returns a routing refusal instead of calling that specialist.
+1. **Fast regex validators** (local, offline) catch obvious abusive language, jailbreak phrases, and wrong specialist hops.
+2. **Same chat LLM second pass** (optional, on by default) classifies paraphrased abuse / injection and **off-topic** asks that regex misses. Uses your Ollama chat model via `make_chat_ollama`. On LLM errors it fails open (allows the turn).
 
-On in `invoke_agent` and on each orchestrator `ask_*_specialist` tool. Disable with `AGENTIC_AI_GUARDRAILS=false`. Blocked turns still get a LangSmith span tagged `guardrail`.
+On in `invoke_agent` and on each orchestrator `ask_*_specialist` tool.
+
+- Disable all: `AGENTIC_AI_GUARDRAILS=false`
+- Regex only (no classifier LLM call): `AGENTIC_AI_GUARDRAILS_LLM=false`
+
+Blocked turns still get a LangSmith span tagged `guardrail`.
 
 ## 10) Tests and coverage
 
@@ -220,7 +224,7 @@ Unit tests cover parsers, tracing/token rollup, calendar `.ics` helpers, restaur
 - `tracing_common.py` - LangSmith tracing (env + named spans + trip state on runs)
 - `orchestrator_agent.py` - routes to specialists
 - `trip_state.py` - typed trip fields (`origin`, `duration_s`, `start_time`) shared across specialist hops and LangSmith
-- `guardrails_common.py` - Guardrails AI: abuse, injection, and wrong specialist hops
+- `guardrails_common.py` - Guardrails AI: regex + optional LLM (abuse, injection, off-topic, wrong hops)
 - `travel_agent.py` - travel and route-town weather logic
 - `weather_agent.py` - weather lookup
 - `restaurant_agent.py` - restaurant tools

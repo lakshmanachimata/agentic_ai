@@ -10,6 +10,8 @@ os.environ.pop("LANGSMITH_API_KEY", None)
 os.environ.pop("LANGCHAIN_API_KEY", None)
 os.environ.setdefault("GUARDRAILS_RUN_SYNC", "true")
 os.environ.setdefault("AGENTIC_AI_GUARDRAILS", "true")
+# Keep unit tests offline/deterministic: regex validators only unless a test enables LLM.
+os.environ.setdefault("AGENTIC_AI_GUARDRAILS_LLM", "false")
 os.environ.setdefault("OTEL_SDK_DISABLED", "true")
 
 import pytest
