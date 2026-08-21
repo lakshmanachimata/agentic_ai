@@ -647,6 +647,7 @@
         <span class="chip">Agents-as-tools</span>
         <span class="chip">Streamlit GUI</span>
         <span class="chip">LangSmith traces</span>
+        <span class="chip">Guardrails · regex + LLM</span>
         <span class="chip">Calendar · OSRM ETA</span>
       </div>
     </header>
@@ -662,6 +663,7 @@
         <a href="#brain">4. LLM as brain<small>Why the model decides, tools fetch facts</small></a>
         <a href="#react">5. ReAct loop<small>Reason → Act → Observe → Answer</small></a>
         <a href="#agents">6. How agents communicate<small>Nested tool calls, not a chat bus</small></a>
+        <a href="#guardrails">6b. Guardrails<small>Regex pass + same-chat LLM classifier</small></a>
         <a href="#memory">7. Memory<small>MemorySaver + thread_id</small></a>
         <a href="#walkthrough">8. Full walkthrough<small>Trip + restaurants end to end</small></a>
         <a href="#calendar">9. Travel calendar<small>OSRM duration · tomorrow dates · GUI Save</small></a>
@@ -796,7 +798,7 @@
             <tr>
               <td>Guardrails</td>
               <td><code>guardrails-ai</code> → <code>guardrails_common.py</code></td>
-              <td>Local validators: abuse, jailbreak, wrong specialist hops</td>
+              <td>Pass 1: local regex (abuse / jailbreak / wrong hop). Pass 2: same Ollama chat LLM classifies abuse, injection, off-topic</td>
             </tr>
             <tr>
               <td>Not used</td>
@@ -821,6 +823,7 @@
 <span class="tok-green">python-dotenv</span><span class="tok-dim">&gt;=1.0.0</span>
 <span class="tok-green">httpx</span><span class="tok-dim">&gt;=0.27.0</span>
 <span class="tok-green">streamlit</span><span class="tok-dim">&gt;=1.32.0</span>
+<span class="tok-green">guardrails-ai</span><span class="tok-dim">&gt;=0.10.0,&lt;1</span>
 
 <span class="tok-dim"># Optional Google Calendar API push:</span>
 <span class="tok-dim"># google-api-python-client / google-auth-oauthlib / google-auth-httplib2</span></pre>
