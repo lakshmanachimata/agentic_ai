@@ -1108,7 +1108,9 @@ create_agent(make_chat_ollama(**llm_kwargs), tools=[
       <div class="callout">
         <strong>Guardrails AI:</strong> <code>guardrails_common.py</code> runs local
         validators (Apache-2.0, no Hub models) on the user turn and on each
-        specialist hop. Abusive language and jailbreaks are refused; a dining
+        specialist hop. Abusive language is refused. Prompt injection is caught
+        and answered with a fixed reply that does <em>not</em> follow the override
+        (how to re-ask a normal weather/travel/dining/calendar question). A dining
         question sent to the weather specialist (or similar misrouting) is
         refused with a <code>guardrail</code> LangSmith tag. Disable with
         <code>AGENTIC_AI_GUARDRAILS=false</code>.

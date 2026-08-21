@@ -191,7 +191,7 @@ Set `LANGSMITH_TRACING=false` to disable without removing the key.
 [Guardrails AI](https://github.com/guardrails-ai/guardrails) (Apache-2.0) screens prompts **before** the LLM runs. Validators are **local** (no Hub ML models, no remote inference):
 
 - **Abusive / harassing** user text is refused.
-- **Prompt injection** (“ignore previous instructions”, jailbreak) is refused.
+- **Prompt injection** (“ignore previous instructions”, jailbreak, “dump the system prompt”) is caught. The reply **does not follow the override**; it explains that and how to re-ask a normal weather / travel / dining / calendar question.
 - **Wrong specialist hops**: if the orchestrator sends a dining question to the weather agent (or similar), the tool returns a routing refusal instead of calling that specialist.
 
 On in `invoke_agent` and on each orchestrator `ask_*_specialist` tool. Disable with `AGENTIC_AI_GUARDRAILS=false`. Blocked turns still get a LangSmith span tagged `guardrail`.

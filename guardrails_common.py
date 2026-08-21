@@ -33,13 +33,23 @@ REFUSAL_ABUSE = (
     "Please rephrase a weather, travel, dining, or calendar question."
 )
 REFUSAL_INJECTION = (
-    "That looks like an attempt to override instructions. "
-    "Please ask a normal weather, travel, dining, or calendar question."
+    "I won't follow attempts to override instructions, jailbreak this assistant, "
+    "or reveal hidden prompts — including between agents.\n\n"
+    "I can only help with weather, travel time, dining, and calendar trips using "
+    "the normal tools. Rephrase as a plain question (for example: "
+    "\"Weather in Rome today\" or \"Drive time Mumbai to Pune\") and I'll help."
 )
 REFUSAL_HOP = (
     "That request does not belong to the {specialist} specialist. "
     "Ask a {specialist}-related question, or use the orchestrator so it can route correctly."
 )
+
+_HELP_EXAMPLES = {
+    "weather": 'Weather in Rome today',
+    "travel": 'Drive time Mumbai to Pune',
+    "restaurants": 'Restaurants along the drive Boston to Portland',
+    "calendar": 'Add that Mumbai to Hyderabad trip to my calendar',
+}
 
 _TRIP_SPLIT = re.compile(r"\n*Typed trip state \(authoritative", re.IGNORECASE)
 
@@ -62,15 +72,28 @@ _ABUSE_PATTERNS = tuple(
 _INJECTION_PATTERNS = tuple(
     re.compile(p, re.IGNORECASE)
     for p in (
-        r"ignore (?:all )?(?:previous|prior|above) (?:instructions|prompts|rules)",
-        r"disregard (?:your|the) (?:system|previous) (?:prompt|instructions)",
-        r"you are now (?:dan|jailbroken|unrestricted)",
+        r"ignore (?:all )?(?:your |the )?(?:previous|prior|above|earlier) (?:instructions|prompts|rules|context)",
+        r"ignore (?:all )?(?:your |the )?instructions",
+        r"disregard (?:your|the|all) (?:system|previous|prior|safety) (?:prompt|instructions|rules|guardrails)",
+        r"forget (?:all )?(?:your |the )?(?:instructions|rules|prompt|guidelines)",
+        r"you are now (?:dan|jailbroken|unrestricted|unfiltered|a different)",
         r"\bjailbreak\b",
-        r"developer mode (?:enabled|on)",
-        r"override (?:the )?(?:system|safety)",
-        r"reveal (?:your )?(?:system prompt|hidden instructions)",
+        r"\bdo anything now\b",
+        r"developer mode (?:enabled|on|activated)",
+        r"override (?:the )?(?:system|safety|guardrails?)",
+        r"bypass (?:the )?(?:filter|safety|guardrails?|restrictions)",
+        r"disable (?:the )?(?:guardrails?|safety|filters?)",
+        r"reveal (?:your )?(?:system prompt|hidden instructions|internal prompt)",
+        r"(?:dump|print|show|repeat) (?:your |the )?(?:system prompt|hidden instructions|system message)",
         r"new instructions\s*:",
-        r"pretend you (?:are|have) no (?:rules|limits|restrictions)",
+        r"pretend you (?:are|have) no (?:rules|limits|restrictions|guardrails)",
+        r"act as (?:if you (?:have|had) no|an? unrestricted|root|developer)",
+        r"you (?:are|must be) no longer (?:the )?(?:weather|travel|restaurant|calendar|orchestrator)",
+        r"respond as (?:the )?(?:system|root|developer|unfiltered)",
+        r"<(?:\|)?(?:system|SYS|inst)(?:\|)?>",
+        r"\[/?INST\]",
+        r"###\s*(?:system|instruction)",
+        r"^\s*system\s*:",
     )
 )
 
@@ -151,6 +174,26 @@ def _user_portion(text: str) -> str:
 
 def _contains_phrase(text: str, phrase: str) -> bool:
     return re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text, re.IGNORECASE) is not None
+
+
+def injection_reply(text: str = "", *, specialist: str = "") -> str:
+    """User-facing reply when prompt injection is caught (do not follow the override)."""
+    lines = [REFUSAL_INJECTION]
+    spec = (specialist or "").strip().lower()
+    if spec in _HELP_EXAMPLES:
+        lines.append(
+            f"If you still want the {spec} specialist, ask only that task — "
+            f'for example: "{_HELP_EXAMPLES[spec]}".'
+        )
+        return "\n".join(lines)
+    leftover = matched_domains(text)
+    if leftover:
+        names = ", ".join(sorted(leftover))
+        lines.append(
+            f"If you meant to ask about {names}, send that as a normal question "
+            "without the override wording."
+        )
+    return "\n".join(lines)
 
 
 def matched_domains(text: str) -> set[str]:
@@ -239,11 +282,11 @@ def _failure_code(outcome: Any) -> str:
     return "blocked"
 
 
-def _refusal_for_code(code: str, *, specialist: str = "") -> str:
+def _refusal_for_code(code: str, *, specialist: str = "", text: str = "") -> str:
     if code == "abuse":
         return REFUSAL_ABUSE
     if code == "injection":
-        return REFUSAL_INJECTION
+        return injection_reply(text, specialist=specialist)
     if code == "wrong_specialist":
         return REFUSAL_HOP.format(specialist=specialist or "that")
     return REFUSAL_ABUSE
@@ -269,7 +312,7 @@ def screen_user_prompt(text: str) -> str | None:
     code = _run_guard(_safety_guard(), q)
     if not code:
         return None
-    return _refusal_for_code(code)
+    return _refusal_for_code(code, text=q)
 
 
 def screen_specialist_hop(text: str, specialist: str) -> str | None:
@@ -283,7 +326,7 @@ def screen_specialist_hop(text: str, specialist: str) -> str | None:
     code = _run_guard(_hop_guard(), q, metadata={"specialist": spec})
     if not code:
         return None
-    return _refusal_for_code(code, specialist=spec)
+    return _refusal_for_code(code, specialist=spec, text=q)
 
 
 def screen_prompt(text: str, *, agent_name: str = "agent") -> str | None:
